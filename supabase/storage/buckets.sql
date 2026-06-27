@@ -11,6 +11,13 @@ values
     array['image/jpeg', 'image/png', 'image/webp']
   ),
   (
+    'work-pdfs',
+    'work-pdfs',
+    false,
+    52428800,
+    array['application/pdf']
+  ),
+  (
     'profile-images',
     'profile-images',
     true,
@@ -49,6 +56,44 @@ create policy "Admins can delete work images"
 on storage.objects for delete
 using (
   bucket_id = 'work-images'
+  and public.is_admin()
+);
+
+create policy "Users can read downloadable work PDFs"
+on storage.objects for select
+using (
+  bucket_id = 'work-pdfs'
+  and exists (
+    select 1
+    from public.works
+    where works.script_pdf_path = storage.objects.name
+      and works.visibility = 'published'
+      and works.is_pdf_download_allowed = true
+  )
+);
+
+create policy "Admins can upload work PDFs"
+on storage.objects for insert
+with check (
+  bucket_id = 'work-pdfs'
+  and public.is_admin()
+);
+
+create policy "Admins can update work PDFs"
+on storage.objects for update
+using (
+  bucket_id = 'work-pdfs'
+  and public.is_admin()
+)
+with check (
+  bucket_id = 'work-pdfs'
+  and public.is_admin()
+);
+
+create policy "Admins can delete work PDFs"
+on storage.objects for delete
+using (
+  bucket_id = 'work-pdfs'
   and public.is_admin()
 );
 

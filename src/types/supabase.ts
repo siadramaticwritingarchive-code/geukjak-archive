@@ -30,7 +30,12 @@ export type Database = {
       notifications: GenericTable;
     };
     Views: Record<string, never>;
-    Functions: Record<string, never>;
+    Functions: {
+      increment_work_view_count: {
+        Args: { work_id: string };
+        Returns: void;
+      };
+    };
     Enums: {
       user_role: 'student' | 'faculty' | 'admin';
       work_visibility: 'draft' | 'published' | 'archived';
