@@ -1,4 +1,6 @@
 import { createBrowserRouter } from 'react-router';
+import { GuestRoute } from '../components/GuestRoute';
+import { ProtectedRoute } from '../components/ProtectedRoute';
 import { AppLayout } from '../layouts/AppLayout';
 import { AdminDashboardPage } from '../pages/admin/AdminDashboardPage';
 import { ArchivePage } from '../pages/archive/ArchivePage';
@@ -17,10 +19,20 @@ export const router = createBrowserRouter([
       { path: '/archive', element: <ArchivePage /> },
       { path: '/archive/:workId', element: <WorkDetailPage /> },
       { path: '/community', element: <CommunityPage /> },
-      { path: '/login', element: <LoginPage /> },
-      { path: '/signup', element: <SignupPage /> },
-      { path: '/profile', element: <ProfilePage /> },
-      { path: '/admin', element: <AdminDashboardPage /> }
+      {
+        element: <GuestRoute />,
+        children: [
+          { path: '/login', element: <LoginPage /> },
+          { path: '/signup', element: <SignupPage /> }
+        ]
+      },
+      {
+        element: <ProtectedRoute />,
+        children: [
+          { path: '/profile', element: <ProfilePage /> },
+          { path: '/admin', element: <AdminDashboardPage /> }
+        ]
+      }
     ]
   }
 ]);

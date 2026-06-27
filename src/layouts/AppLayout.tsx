@@ -1,5 +1,6 @@
 import { NavLink, Outlet } from 'react-router';
 import { motion } from 'framer-motion';
+import { useAuth } from '../hooks/useAuth';
 import { cn } from '../utils/cn';
 
 const navigationItems = [
@@ -11,6 +12,8 @@ const navigationItems = [
 ];
 
 export function AppLayout() {
+  const { user, profile, signOut } = useAuth();
+
   return (
     <div className="min-h-screen bg-ivory text-ink">
       <header className="sticky top-0 z-20 border-b border-ink/10 bg-ivory/90 backdrop-blur">
@@ -41,12 +44,22 @@ export function AppLayout() {
                 {item.label}
               </NavLink>
             ))}
-            <NavLink
-              to="/login"
-              className="rounded-full border border-ink bg-ink px-4 py-2 text-ivory transition-colors hover:bg-charcoal"
-            >
-              Login
-            </NavLink>
+            {user ? (
+              <button
+                type="button"
+                onClick={() => void signOut()}
+                className="rounded-full border border-ink bg-ink px-4 py-2 text-ivory transition-colors hover:bg-charcoal"
+              >
+                {profile?.display_name ?? 'Logout'}
+              </button>
+            ) : (
+              <NavLink
+                to="/login"
+                className="rounded-full border border-ink bg-ink px-4 py-2 text-ivory transition-colors hover:bg-charcoal"
+              >
+                Login
+              </NavLink>
+            )}
           </nav>
         </div>
       </header>
