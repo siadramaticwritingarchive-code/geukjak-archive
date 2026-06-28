@@ -1,179 +1,244 @@
-import { useEffect, useMemo, useState } from 'react';
-import { zodResolver } from '@hookform/resolvers/zod';
-import { useForm } from 'react-hook-form';
-import { z } from 'zod';
-import { TextArea } from '../../components/forms/TextArea';
-import { TextInput } from '../../components/forms/TextInput';
+import { useMemo, useState } from 'react';
+import { Link } from 'react-router';
+import { Bookmark, Camera, Edit3, FileText, Heart, Lock, LogOut, MessageSquareText, PlusCircle, ShieldCheck, Sparkles } from 'lucide-react';
 import { PageHeader } from '../../components/PageHeader';
 import { useAuth } from '../../hooks/useAuth';
-import { profileService } from '../../services/profileService';
 
-const profileSchema = z.object({
-  displayName: z
-    .string()
-    .min(2, '닉네임은 2자 이상이어야 합니다.')
-    .max(24, '닉네임은 24자 이하로 입력해 주세요.')
-    .regex(/^[가-힣a-zA-Z0-9_-]+$/, '닉네임은 한글, 영문, 숫자, _, -만 사용할 수 있습니다.'),
-  bio: z.string().max(240, '소개는 240자 이하로 입력해 주세요.').optional()
-});
+type WorkItem = {
+  id: number;
+  title: string;
+  genre: string;
+  visibility: string;
+  views: number;
+  likes: number;
+  createdAt: string;
+};
 
-type ProfileFormValues = z.infer<typeof profileSchema>;
+type PostItem = {
+  id: number;
+  board: string;
+  title: string;
+  createdAt: string;
+  comments: number;
+};
+
+type CommentItem = {
+  id: number;
+  content: string;
+  postTitle: string;
+  createdAt: string;
+};
+
+const summaryCards = [
+  { label: '등록한 작품', value: '3', icon: FileText },
+  { label: '추천한 작품', value: '4', icon: Sparkles },
+  { label: '작성한 게시글', value: '7', icon: MessageSquareText },
+  { label: '작성한 댓글', value: '12', icon: MessageSquareText },
+  { label: '받은 좋아요', value: '48', icon: Heart },
+  { label: '북마크한 작품', value: '9', icon: Bookmark }
+];
+
+const works: WorkItem[] = [
+  { id: 1, title: '도시의 마지막 빛', genre: '시나리오', visibility: '서울예대생 전체', views: 842, likes: 48, createdAt: '2026.06.20' },
+  { id: 2, title: '해질 무렵의 연극', genre: '희곡', visibility: '극작과만', views: 612, likes: 37, createdAt: '2026.06.18' }
+];
+
+const bookmarks: WorkItem[] = [
+  { id: 3, title: '밤의 회전목마', genre: '드라마', visibility: '서울예대생 전체', views: 431, likes: 29, createdAt: '2026.06.16' }
+];
+
+const recommendedWorks = [
+  { id: 4, title: '비밀의 문장', genre: '웹소설', createdAt: '2026.06.14' },
+  { id: 5, title: '우리는 서로의 빛', genre: '영화', createdAt: '2026.06.12' }
+];
+
+const posts: PostItem[] = [
+  { id: 1, board: '자유게시판', title: '작품 피드백 받는 방식이 궁금합니다.', createdAt: '2026.06.23', comments: 5 },
+  { id: 2, board: '창작 고민', title: '대사와 침묵의 비율에 대한 고민', createdAt: '2026.06.22', comments: 3 }
+];
+
+const comments: CommentItem[] = [
+  { id: 1, content: '장면의 밀도와 대비가 정말 좋았어요.', postTitle: '6월 전공 워크숍 일정 안내', createdAt: '2026.06.25' },
+  { id: 2, content: '다음 작품도 기대하겠습니다.', postTitle: '극작과 학생회 공연 홍보 요청', createdAt: '2026.06.24' }
+];
 
 export function ProfilePage() {
-  const { user, profile, refreshProfile, signOut } = useAuth();
-  const [selectedFile, setSelectedFile] = useState<File | null>(null);
-  const [statusMessage, setStatusMessage] = useState<string | null>(null);
-  const [statusError, setStatusError] = useState<string | null>(null);
+  const { profile, signOut } = useAuth();
+  const [activeTab, setActiveTab] = useState<'works' | 'bookmarks' | 'recommended' | 'posts' | 'comments'>('works');
 
-  const avatarUrl = useMemo(
-    () => profileService.getAvatarPublicUrl(profile?.avatar_path ?? null),
-    [profile?.avatar_path],
-  );
+  const displayName = profile?.display_name ?? '이효정';
+  const department = '극작과';
+  const studentId = '2442123';
 
-  const {
-    register,
-    handleSubmit,
-    reset,
-    formState: { errors, isSubmitting }
-  } = useForm<ProfileFormValues>({
-    resolver: zodResolver(profileSchema),
-    defaultValues: {
-      displayName: '',
-      bio: ''
-    }
-  });
-
-  useEffect(() => {
-    if (!profile) {
-      return;
-    }
-
-    reset({
-      displayName: profile.display_name,
-      bio: profile.bio ?? ''
-    });
-  }, [profile, reset]);
-
-  const handleProfileUpdate = async (values: ProfileFormValues) => {
-    if (!user) {
-      return;
-    }
-
-    setStatusError(null);
-    setStatusMessage(null);
-
-    try {
-      const isAvailable = await profileService.isDisplayNameAvailable(values.displayName, user.id);
-
-      if (!isAvailable) {
-        setStatusError('이미 사용 중인 닉네임입니다.');
-        return;
-      }
-
-      let avatarPath = profile?.avatar_path ?? null;
-
-      if (selectedFile) {
-        avatarPath = await profileService.uploadAvatar(user.id, selectedFile);
-      }
-
-      const { error } = await profileService.updateProfile(user.id, {
-        displayName: values.displayName,
-        bio: values.bio?.trim() ? values.bio.trim() : null,
-        avatarPath
-      });
-
-      if (error) {
-        setStatusError('프로필을 저장하지 못했습니다.');
-        return;
-      }
-
-      setSelectedFile(null);
-      await refreshProfile();
-      setStatusMessage('프로필이 저장되었습니다.');
-    } catch {
-      setStatusError('프로필 저장 중 문제가 발생했습니다.');
-    }
-  };
+  const avatarInitial = useMemo(() => displayName.charAt(0) ?? '이', [displayName]);
 
   return (
-    <div>
+    <div className="space-y-8">
       <PageHeader
-        eyebrow="Member Space"
-        title="프로필"
-        description="공개 닉네임, 소개, 프로필 이미지를 관리합니다. 인증 세션은 새로고침 후에도 유지됩니다."
+        eyebrow="마이페이지"
+        title="나의 작업실"
+        description="작품, 추천, 게시글, 댓글까지 한 곳에서 정리된 개인 작업 공간입니다."
       />
-      <div className="grid gap-6 lg:grid-cols-[0.8fr_1.2fr]">
-        <aside className="rounded-lg border border-ink/10 bg-ink p-6 text-ivory shadow-sm shadow-ink/10">
-          <div className="flex items-center gap-4">
-            <div className="grid size-20 place-items-center overflow-hidden rounded-full border border-gold/40 bg-charcoal">
-              {avatarUrl ? (
-                <img className="h-full w-full object-cover" src={avatarUrl} alt="" />
-              ) : (
-                <span className="font-serif text-3xl text-gold">
-                  {profile?.display_name?.slice(0, 1) ?? 'P'}
-                </span>
-              )}
+
+      <section className="rounded-[32px] border border-ink/10 bg-white/90 p-6 shadow-[0_18px_45px_rgba(22,35,59,0.08)] sm:p-8">
+        <div className="grid gap-6 lg:grid-cols-[0.9fr_1.1fr]">
+          <div className="rounded-[28px] border border-ink/10 bg-[#F8F6F1] p-6">
+            <div className="flex items-center gap-4">
+              <div className="flex h-20 w-20 items-center justify-center rounded-full bg-[#16233B] text-2xl font-semibold text-white">
+                {avatarInitial}
+              </div>
+              <div>
+                <p className="font-serif text-3xl text-[#16233B]">{displayName}</p>
+                <p className="mt-2 text-sm text-charcoal/70">{department}</p>
+                <p className="mt-1 text-sm text-charcoal/60">학번 {studentId}</p>
+              </div>
             </div>
-            <div>
-              <p className="font-serif text-2xl">{profile?.display_name}</p>
-              <p className="mt-1 text-sm text-ivory/65">{user?.email}</p>
+
+            <div className="mt-6 space-y-3 rounded-[24px] border border-ink/10 bg-white/80 p-4 text-sm text-charcoal/70">
+              <div className="flex items-center justify-between"><span>가입일</span><span>2026.06.28</span></div>
+              <div className="flex items-center justify-between"><span>한 줄 소개</span><span>창작을 기록하고 함께 성장하는 공간.</span></div>
+            </div>
+
+            <div className="mt-6 flex flex-wrap gap-3">
+              <button type="button" className="inline-flex items-center gap-2 rounded-full border border-ink/10 bg-white px-4 py-2 text-sm font-semibold text-[#16233B]">
+                <Edit3 size={16} /> 프로필 수정
+              </button>
+              <button type="button" className="inline-flex items-center gap-2 rounded-full border border-ink/10 bg-white px-4 py-2 text-sm font-semibold text-[#16233B]">
+                <Camera size={16} /> 프로필 이미지 변경
+              </button>
             </div>
           </div>
-          <dl className="mt-6 space-y-4 border-t border-ivory/10 pt-6 text-sm">
-            <div className="flex justify-between gap-4">
-              <dt className="text-ivory/55">Role</dt>
-              <dd className="font-medium text-gold">{profile?.role ?? 'student'}</dd>
-            </div>
-            <div className="flex justify-between gap-4">
-              <dt className="text-ivory/55">Status</dt>
-              <dd className="font-medium">{profile?.is_blocked ? 'Blocked' : 'Active'}</dd>
-            </div>
-          </dl>
-          <button
-            type="button"
-            onClick={() => void signOut()}
-            className="mt-8 w-full rounded-lg border border-ivory/20 px-5 py-3 text-sm font-semibold uppercase tracking-[0.18em] transition hover:border-gold hover:text-gold"
-          >
-            로그아웃
-          </button>
-        </aside>
 
-        <section className="rounded-lg border border-ink/10 bg-white/60 p-6 shadow-sm shadow-ink/5">
-          <h2 className="font-serif text-3xl">Edit Profile</h2>
-          <form className="mt-6 space-y-5" onSubmit={handleSubmit(handleProfileUpdate)}>
-            <TextInput
-              label="Nickname"
-              autoComplete="nickname"
-              error={errors.displayName?.message}
-              {...register('displayName')}
-            />
-            <TextArea
-              label="Bio"
-              error={errors.bio?.message}
-              placeholder="작품 세계, 관심 장르, 짧은 소개를 적어 주세요."
-              {...register('bio')}
-            />
-            <label className="block">
-              <span className="text-sm font-medium text-ink">Profile Image</span>
-              <input
-                className="mt-2 w-full rounded-lg border border-dashed border-ink/20 bg-white/70 px-4 py-3 text-sm text-charcoal file:mr-4 file:rounded-full file:border-0 file:bg-gold file:px-4 file:py-2 file:text-sm file:font-semibold file:text-ink"
-                type="file"
-                accept="image/png,image/jpeg,image/webp"
-                onChange={(event) => setSelectedFile(event.target.files?.[0] ?? null)}
-              />
-            </label>
-            {statusError ? <p className="text-sm text-red-700">{statusError}</p> : null}
-            {statusMessage ? <p className="text-sm text-green-700">{statusMessage}</p> : null}
-            <button
-              type="submit"
-              disabled={isSubmitting}
-              className="w-full rounded-lg bg-ink px-5 py-3 text-sm font-semibold uppercase tracking-[0.18em] text-ivory transition hover:bg-charcoal disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              {isSubmitting ? '저장 중' : '프로필 저장'}
+          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+            {summaryCards.map((card) => {
+              const Icon = card.icon;
+              return (
+                <div key={card.label} className="rounded-[24px] border border-ink/10 bg-white/80 p-4 shadow-sm">
+                  <div className="flex items-center justify-between">
+                    <p className="text-sm text-charcoal/70">{card.label}</p>
+                    <div className="rounded-full bg-[#F8F6F1] p-2 text-[#B08D57]"><Icon size={16} /></div>
+                  </div>
+                  <p className="mt-5 text-3xl font-semibold text-[#16233B]">{card.value}</p>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </section>
+
+      <section className="rounded-[32px] border border-ink/10 bg-white/90 p-6 shadow-[0_18px_45px_rgba(22,35,59,0.08)] sm:p-8">
+        <div className="flex flex-wrap items-center gap-2">
+          {[
+            ['works', '내 작품'],
+            ['bookmarks', '북마크한 작품'],
+            ['recommended', '추천한 작품'],
+            ['posts', '내가 작성한 게시글'],
+            ['comments', '최근 작성한 댓글']
+          ].map(([key, label]) => (
+            <button key={key} type="button" onClick={() => setActiveTab(key as typeof activeTab)} className={`rounded-full px-4 py-2 text-sm font-semibold transition ${activeTab === key ? 'bg-[#16233B] text-white' : 'border border-ink/10 bg-[#F8F6F1] text-[#16233B]'}`}>
+              {label}
             </button>
-          </form>
-        </section>
-      </div>
+          ))}
+        </div>
+
+        <div className="mt-6">
+          {activeTab === 'works' ? (
+            <div className="grid gap-4 lg:grid-cols-2">
+              {works.length > 0 ? works.map((work) => (
+                <div key={work.id} className="rounded-[24px] border border-ink/10 bg-[#F8F6F1] p-5">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-[#B08D57]">{work.genre}</p>
+                      <h3 className="mt-2 font-serif text-2xl text-[#16233B]">{work.title}</h3>
+                    </div>
+                    <span className="rounded-full border border-ink/10 bg-white px-3 py-1 text-xs font-semibold text-charcoal/70">{work.visibility}</span>
+                  </div>
+                  <div className="mt-4 flex flex-wrap gap-4 text-sm text-charcoal/70">
+                    <span>조회수 {work.views}</span>
+                    <span>좋아요 {work.likes}</span>
+                    <span>작성일 {work.createdAt}</span>
+                  </div>
+                  <div className="mt-5 flex flex-wrap gap-2">
+                    <button type="button" className="rounded-full border border-ink/10 bg-white px-3 py-2 text-sm font-semibold text-[#16233B]">수정</button>
+                    <button type="button" className="rounded-full border border-ink/10 bg-white px-3 py-2 text-sm font-semibold text-[#16233B]">삭제</button>
+                  </div>
+                </div>
+              )) : <p className="rounded-[24px] border border-dashed border-ink/10 bg-[#F8F6F1] p-6 text-sm text-charcoal/70">등록한 작품이 없습니다.</p>}
+            </div>
+          ) : null}
+
+          {activeTab === 'bookmarks' ? (
+            <div className="grid gap-4 lg:grid-cols-2">
+              {bookmarks.length > 0 ? bookmarks.map((work) => (
+                <div key={work.id} className="rounded-[24px] border border-ink/10 bg-[#F8F6F1] p-5">
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-[#B08D57]">{work.genre}</p>
+                  <h3 className="mt-2 font-serif text-2xl text-[#16233B]">{work.title}</h3>
+                  <p className="mt-3 text-sm text-charcoal/70">공개 범위 {work.visibility}</p>
+                </div>
+              )) : <p className="rounded-[24px] border border-dashed border-ink/10 bg-[#F8F6F1] p-6 text-sm text-charcoal/70">북마크한 작품이 없습니다.</p>}
+            </div>
+          ) : null}
+
+          {activeTab === 'recommended' ? (
+            <div className="grid gap-4 lg:grid-cols-2">
+              {recommendedWorks.length > 0 ? recommendedWorks.map((work) => (
+                <div key={work.id} className="rounded-[24px] border border-ink/10 bg-[#F8F6F1] p-5">
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-[#B08D57]">{work.genre}</p>
+                  <h3 className="mt-2 font-serif text-2xl text-[#16233B]">{work.title}</h3>
+                  <p className="mt-3 text-sm text-charcoal/70">추천일 {work.createdAt}</p>
+                </div>
+              )) : <p className="rounded-[24px] border border-dashed border-ink/10 bg-[#F8F6F1] p-6 text-sm text-charcoal/70">추천한 작품이 없습니다.</p>}
+            </div>
+          ) : null}
+
+          {activeTab === 'posts' ? (
+            <div className="space-y-3">
+              {posts.length > 0 ? posts.map((post) => (
+                <div key={post.id} className="rounded-[24px] border border-ink/10 bg-[#F8F6F1] p-4">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div>
+                      <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-[#B08D57]">{post.board}</p>
+                      <h3 className="mt-2 font-serif text-xl text-[#16233B]">{post.title}</h3>
+                    </div>
+                    <div className="text-sm text-charcoal/70">
+                      <p>작성일 {post.createdAt}</p>
+                      <p className="mt-1">댓글 {post.comments}</p>
+                    </div>
+                  </div>
+                </div>
+              )) : <p className="rounded-[24px] border border-dashed border-ink/10 bg-[#F8F6F1] p-6 text-sm text-charcoal/70">작성한 게시글이 없습니다.</p>}
+            </div>
+          ) : null}
+
+          {activeTab === 'comments' ? (
+            <div className="space-y-3">
+              {comments.length > 0 ? comments.map((comment) => (
+                <div key={comment.id} className="rounded-[24px] border border-ink/10 bg-[#F8F6F1] p-4">
+                  <p className="text-sm leading-7 text-charcoal/75">“{comment.content}”</p>
+                  <div className="mt-3 flex flex-wrap items-center justify-between gap-3 text-sm text-charcoal/60">
+                    <span>{comment.postTitle}</span>
+                    <span>{comment.createdAt}</span>
+                  </div>
+                </div>
+              )) : <p className="rounded-[24px] border border-dashed border-ink/10 bg-[#F8F6F1] p-6 text-sm text-charcoal/70">작성한 댓글이 없습니다.</p>}
+            </div>
+          ) : null}
+        </div>
+      </section>
+
+      <section className="rounded-[32px] border border-ink/10 bg-white/90 p-6 shadow-[0_18px_45px_rgba(22,35,59,0.08)] sm:p-8">
+        <div className="flex items-center gap-2 text-[#16233B]">
+          <ShieldCheck size={18} className="text-[#B08D57]" />
+          <h2 className="font-serif text-2xl">계정 설정</h2>
+        </div>
+        <div className="mt-6 grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+          <button type="button" className="rounded-[20px] border border-ink/10 bg-[#F8F6F1] px-4 py-3 text-left text-sm font-semibold text-[#16233B]">프로필 수정</button>
+          <button type="button" className="rounded-[20px] border border-ink/10 bg-[#F8F6F1] px-4 py-3 text-left text-sm font-semibold text-[#16233B] flex items-center gap-2"><Lock size={16} /> 비밀번호 변경</button>
+          <button type="button" className="rounded-[20px] border border-ink/10 bg-[#F8F6F1] px-4 py-3 text-left text-sm font-semibold text-[#16233B]">알림 설정</button>
+          <Link to="/copyright-policy" className="rounded-[20px] border border-ink/10 bg-[#F8F6F1] px-4 py-3 text-left text-sm font-semibold text-[#16233B]">저작권 정책</Link>
+          <button type="button" onClick={() => void signOut()} className="rounded-[20px] border border-ink/10 bg-[#F8F6F1] px-4 py-3 text-left text-sm font-semibold text-[#16233B] flex items-center gap-2"><LogOut size={16} /> 로그아웃</button>
+        </div>
+      </section>
     </div>
   );
 }

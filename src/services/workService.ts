@@ -16,9 +16,10 @@ export type WorkMutationInput = {
   title: string;
   authorName: string;
   year: number;
+  category: string;
   genre: string;
+  logline: string;
   synopsis: string;
-  categoryId: string | null;
   tagNames: string[];
   visibility: 'draft' | 'published' | 'archived';
   isPdfDownloadAllowed: boolean;
@@ -27,6 +28,10 @@ export type WorkMutationInput = {
   pdfFile?: File | null;
   userId: string;
 };
+
+const unavailableError = new Error(
+  'Supabase is not configured. Add VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY to .env.local.',
+);
 
 const sortMap: Record<WorkSort, { column: string; ascending: boolean }> = {
   latest: { column: 'created_at', ascending: false },
@@ -50,6 +55,10 @@ function uniqueTagNames(tagNames: string[]) {
 }
 
 async function uploadWorkAsset(bucket: 'work-images' | 'work-pdfs', workId: string, file: File) {
+  if (!supabase) {
+    throw unavailableError;
+  }
+
   const extension = file.name.split('.').pop() ?? (bucket === 'work-pdfs' ? 'pdf' : 'webp');
   const filePath = `${workId}/${bucket}-${Date.now()}.${extension}`;
 
@@ -66,6 +75,10 @@ async function uploadWorkAsset(bucket: 'work-images' | 'work-pdfs', workId: stri
 }
 
 async function syncWorkTags(workId: string, tagNames: string[]) {
+  if (!supabase) {
+    throw unavailableError;
+  }
+
   const names = uniqueTagNames(tagNames);
 
   await supabase.from('work_tags').delete().eq('work_id', workId);
@@ -103,6 +116,10 @@ async function syncWorkTags(workId: string, tagNames: string[]) {
 
 export const workService = {
   async listPublishedWorks(filters: WorkListFilters = {}) {
+    if (!supabase) {
+      return [];
+    }
+
     const sort = sortMap[filters.sort ?? 'latest'];
 
     let query = supabase
@@ -143,6 +160,10 @@ export const workService = {
   },
 
   async listCategories() {
+    if (!supabase) {
+      return [];
+    }
+
     const { data, error } = await supabase
       .from('categories')
       .select('id,name,slug,description')
@@ -157,6 +178,10 @@ export const workService = {
   },
 
   async getWorkById(workId: string) {
+    if (!supabase) {
+      return null;
+    }
+
     const { data, error } = await supabase
       .from('works')
       .select('*, categories(id,name,slug,description), work_tags(tags(id,name,slug))')
@@ -172,6 +197,10 @@ export const workService = {
   },
 
   async createWork(input: WorkMutationInput) {
+    if (!supabase) {
+      throw unavailableError;
+    }
+
     const { data: createdWork, error } = await supabase
       .from('works')
       .insert({
@@ -179,8 +208,9 @@ export const workService = {
         author_name: input.authorName,
         year: input.year,
         genre: input.genre,
+        category: input.category,
+        logline: input.logline,
         synopsis: input.synopsis,
-        category_id: input.categoryId,
         visibility: input.visibility,
         is_pdf_download_allowed: input.isPdfDownloadAllowed,
         is_featured: input.isFeatured,
@@ -191,6 +221,8 @@ export const workService = {
       .select('id')
       .returns<Array<{ id: string }>>()
       .single();
+console.log(error);
+alert(error?.message ?? 'insert 성공');
 
     if (error) {
       throw error;
@@ -222,6 +254,10 @@ export const workService = {
   },
 
   async updateWork(workId: string, input: WorkMutationInput) {
+    if (!supabase) {
+      throw unavailableError;
+    }
+
     const posterPath = input.posterFile
       ? await uploadWorkAsset('work-images', workId, input.posterFile)
       : undefined;
@@ -235,9 +271,9 @@ export const workService = {
         title: input.title,
         author_name: input.authorName,
         year: input.year,
+        category: input.category,
         genre: input.genre,
         synopsis: input.synopsis,
-        category_id: input.categoryId,
         visibility: input.visibility,
         is_pdf_download_allowed: input.isPdfDownloadAllowed,
         is_featured: input.isFeatured,
@@ -256,6 +292,10 @@ export const workService = {
   },
 
   async deleteWork(workId: string) {
+    if (!supabase) {
+      throw unavailableError;
+    }
+
     const { error } = await supabase.from('works').delete().eq('id', workId);
 
     if (error) {
@@ -264,10 +304,18 @@ export const workService = {
   },
 
   incrementViewCount(workId: string) {
+    if (!supabase) {
+      return Promise.resolve({ data: null, error: unavailableError } as any);
+    }
+
     return supabase.rpc('increment_work_view_count', { work_id: workId });
   },
 
   async isBookmarked(workId: string, userId: string) {
+    if (!supabase) {
+      return false;
+    }
+
     const { data, error } = await supabase
       .from('bookmarks')
       .select('id')
@@ -284,6 +332,10 @@ export const workService = {
   },
 
   async toggleBookmark(workId: string, userId: string) {
+    if (!supabase) {
+      throw unavailableError;
+    }
+
     const { data, error } = await supabase
       .from('bookmarks')
       .select('id')
@@ -322,7 +374,7 @@ export const workService = {
   },
 
   getPosterUrl(path: string | null) {
-    if (!path) {
+    if (!path || !supabase) {
       return null;
     }
 
@@ -331,7 +383,7 @@ export const workService = {
   },
 
   async getPdfUrl(path: string | null) {
-    if (!path) {
+    if (!path || !supabase) {
       return null;
     }
 

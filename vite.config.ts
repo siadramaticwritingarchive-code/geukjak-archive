@@ -39,10 +39,10 @@ export default defineConfig({
     VitePWA({
       registerType: 'autoUpdate',
       manifest: {
-        name: 'SIA Playwriting Archive',
+        name: 'SIA Dramaticwriting Archive',
         short_name: 'SIA Archive',
         description:
-          'A premium theatre archive for the Department of Playwriting at Seoul Institute of the Arts.',
+          'A premium theatre archive for the Department of Dramaticwriting at Seoul Institute of the Arts.',
         theme_color: '#0b0b0b',
         background_color: '#f7f1e8',
         display: 'standalone',

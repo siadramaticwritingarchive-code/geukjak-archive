@@ -16,7 +16,7 @@ type GenericTable = {
 export type Database = {
   public: {
     Tables: {
-      users: GenericTable;
+      profiles: GenericTable;
       works: GenericTable;
       comments: GenericTable;
       replies: GenericTable;
@@ -37,7 +37,12 @@ export type Database = {
       };
     };
     Enums: {
-      user_role: 'student' | 'faculty' | 'admin';
+     user_role:
+  | 'dramaticwriting'
+  | 'other'
+  | 'professor'
+  | 'staff'
+  | 'admin';
       work_visibility: 'draft' | 'published' | 'archived';
       community_board_type: 'free' | 'questions' | 'announcements' | 'anonymous';
       report_status: 'open' | 'reviewing' | 'resolved' | 'dismissed';

@@ -59,7 +59,7 @@ using (
   and public.is_admin()
 );
 
-create policy "Users can read downloadable work PDFs"
+create policy "profiles can read downloadable work PDFs"
 on storage.objects for select
 using (
   bucket_id = 'work-pdfs'
@@ -101,14 +101,14 @@ create policy "Anyone can read profile images"
 on storage.objects for select
 using (bucket_id = 'profile-images');
 
-create policy "Users can upload own profile image"
+create policy "profiles can upload own profile image"
 on storage.objects for insert
 with check (
   bucket_id = 'profile-images'
   and auth.uid()::text = (storage.foldername(name))[1]
 );
 
-create policy "Users can update own profile image"
+create policy "profiles can update own profile image"
 on storage.objects for update
 using (
   bucket_id = 'profile-images'
@@ -119,7 +119,7 @@ with check (
   and auth.uid()::text = (storage.foldername(name))[1]
 );
 
-create policy "Users can delete own profile image"
+create policy "profiles can delete own profile image"
 on storage.objects for delete
 using (
   bucket_id = 'profile-images'

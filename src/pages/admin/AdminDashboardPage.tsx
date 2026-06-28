@@ -1,30 +1,23 @@
-import { PageHeader } from '../../components/PageHeader';
-import { PlaceholderPanel } from '../../components/PlaceholderPanel';
-
-const adminAreas = [
-  'Works',
-  'Community',
-  'Users',
-  'Reports',
-  'Storage',
-  'Statistics'
-];
+import { useAuth } from '../../hooks/useAuth';
+import { AdminDashboardContent } from './AdminDashboardContent';
+import { AdminPageShell } from './AdminPageShell';
 
 export function AdminDashboardPage() {
+  const { effectiveRole, canManageAdminPermissions } = useAuth();
+  const roleLabel = effectiveRole === 'super_admin' ? '학회장단' : effectiveRole === 'staff' ? '학회원' : '일반 회원';
+
   return (
-    <div>
-      <PageHeader
-        eyebrow="Admin"
-        title="Dashboard"
-        description="Administrators will manage works, users, reports, uploads, announcements, recommended works, and dashboard statistics."
-      />
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-        {adminAreas.map((area) => (
-          <PlaceholderPanel key={area} title={area}>
-            Placeholder management surface for {area.toLowerCase()}.
-          </PlaceholderPanel>
-        ))}
-      </div>
-    </div>
+    <AdminPageShell
+      title="관리자 대시보드"
+      description="회원, 작품, 커뮤니티, 신고, 공지와 사이트 설정을 한눈에 관리합니다."
+      badge="DASHBOARD"
+      action={
+        <div className="rounded-full border border-ink/10 bg-[#F8F6F1] px-4 py-2 text-sm font-semibold text-[#16233B]">
+          현재 역할 · {roleLabel}{canManageAdminPermissions ? ' · 권한 관리 가능' : ''}
+        </div>
+      }
+    >
+      <AdminDashboardContent />
+    </AdminPageShell>
   );
 }

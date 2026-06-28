@@ -4,34 +4,39 @@ import { PageHeader } from '../../components/PageHeader';
 import { WorkForm } from '../../components/archive/WorkForm';
 import { useAuth } from '../../hooks/useAuth';
 import { workService } from '../../services/workService';
-import type { CategoryRecord, WorkFormValues, WorkRecord } from '../../types/archive';
+import type { WorkFormValues, WorkRecord } from '../../types/archive';
 
 function splitTags(tagNames: string) {
-  return tagNames.split(',').map((tagName) => tagName.trim()).filter(Boolean);
+  return tagNames
+    .split(',')
+    .map((tag) => tag.trim())
+    .filter(Boolean);
 }
 
 export function WorkEditPage() {
   const { workId } = useParams();
   const navigate = useNavigate();
   const { user, profile } = useAuth();
+
   const [work, setWork] = useState<WorkRecord | null>(null);
-  const [categories, setCategories] = useState<CategoryRecord[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!workId) {
-      return;
-    }
+    if (!workId) return;
 
-    Promise.all([workService.getWorkById(workId), workService.listCategories()])
-      .then(([workData, categoryData]) => {
-        setWork(workData);
-        setCategories(categoryData);
+    workService
+      .getWorkById(workId)
+      .then((data) => {
+        setWork(data);
       })
-      .catch(() => setError('작품 정보를 불러오지 못했습니다.'))
-      .finally(() => setIsLoading(false));
+      .catch(() => {
+        setError('작품 정보를 불러오지 못했습니다.');
+      })
+      .finally(() => {
+        setIsLoading(false);
+      });
   }, [workId]);
 
   const handleSubmit = async (values: WorkFormValues) => {
@@ -49,8 +54,8 @@ export function WorkEditPage() {
         authorName: values.authorName,
         year: values.year,
         genre: values.genre,
+        logline: values.logline,
         synopsis: values.synopsis,
-        categoryId: values.categoryId || null,
         tagNames: splitTags(values.tagNames),
         visibility: values.visibility,
         isPdfDownloadAllowed: values.isPdfDownloadAllowed,
@@ -67,25 +72,32 @@ export function WorkEditPage() {
       setIsSubmitting(false);
     }
   };
-
-  if (isLoading) {
-    return <div className="rounded-lg border border-ink/10 bg-white/60 p-6">작품 정보를 불러오는 중입니다.</div>;
+   if (isLoading) {
+    return (
+      <div className="rounded-lg border border-ink/10 bg-white/60 p-6">
+        작품 정보를 불러오는 중입니다.
+      </div>
+    );
   }
 
   if (!work) {
-    return <div className="rounded-lg border border-red-200 bg-red-50 p-6 text-red-700">{error ?? '작품이 없습니다.'}</div>;
+    return (
+      <div className="rounded-lg border border-red-200 bg-red-50 p-6 text-red-700">
+        {error ?? '작품이 없습니다.'}
+      </div>
+    );
   }
 
   return (
     <div className="mx-auto max-w-5xl">
       <PageHeader
-        eyebrow="Archive Admin"
+        eyebrow="Archive"
         title="작품 수정"
-        description="아카이브 작품의 메타데이터, 파일, 공개 상태를 수정합니다."
+        description="작품 정보를 수정하고 변경 사항을 저장합니다."
       />
+
       <WorkForm
         mode="edit"
-        categories={categories}
         initialWork={work}
         isSubmitting={isSubmitting}
         error={error}
@@ -93,4 +105,4 @@ export function WorkEditPage() {
       />
     </div>
   );
-}
+} 

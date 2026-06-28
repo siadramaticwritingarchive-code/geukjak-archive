@@ -73,13 +73,13 @@ export function LoginPage() {
   return (
     <div className="mx-auto max-w-5xl">
       <PageHeader
-        eyebrow="Authentication"
-        title="다시 무대로 돌아오기"
-        description="이메일로 로그인하고, 세션은 Supabase Auth를 통해 안전하게 유지됩니다."
+        eyebrow="로그인"
+        title="아카이브에 다시 들어오세요"
+        description="학생과 교수진이 작품과 커뮤니티를 이어갈 수 있도록 안전하게 로그인합니다."
       />
       <div className="grid gap-6 lg:grid-cols-[1.15fr_0.85fr]">
         <section className="rounded-lg border border-ink/10 bg-white/60 p-6 shadow-sm shadow-ink/5">
-          <h2 className="font-serif text-3xl">Login</h2>
+          <h2 className="font-serif text-3xl">로그인</h2>
           <form className="mt-6 space-y-5" onSubmit={loginForm.handleSubmit(handleLogin)}>
             <TextInput
               label="Email"
@@ -114,7 +114,7 @@ export function LoginPage() {
         </section>
 
         <section className="rounded-lg border border-gold/30 bg-ink p-6 text-ivory shadow-sm shadow-ink/10">
-          <h2 className="font-serif text-3xl">Password Reset</h2>
+          <h2 className="font-serif text-3xl">비밀번호 재설정</h2>
           <p className="mt-3 text-sm leading-6 text-ivory/75">
             가입한 이메일을 입력하면 비밀번호 재설정 링크를 보내드립니다.
           </p>

@@ -1,20 +1,26 @@
--- SIA Playwriting Archive initial schema
+-- SIA Dramaticwriting Archive initial schema
 -- Apply this after creating a Supabase project. It assumes Supabase Auth is enabled.
 
 create extension if not exists "pgcrypto";
 
-create type public.user_role as enum ('student', 'faculty', 'admin');
+create type public.user_role as enum (
+  'dramaticwriting',
+  'other',
+  'professor',
+  'staff',
+  'admin'
+);
 create type public.work_visibility as enum ('draft', 'published', 'archived');
 create type public.community_board_type as enum ('free', 'questions', 'announcements', 'anonymous');
 create type public.report_status as enum ('open', 'reviewing', 'resolved', 'dismissed');
 create type public.notification_type as enum ('comment', 'reply', 'like', 'bookmark', 'announcement', 'system');
 
-create table public.users (
-  id uuid primary key references auth.users(id) on delete cascade,
+create table public.profiles (
+  id uuid primary key references auth.profiles(id) on delete cascade,
   email text not null unique,
   display_name text not null,
   avatar_path text,
-  role public.user_role not null default 'student',
+  role public.user_role not null default 'other',
   bio text,
   is_blocked boolean not null default false,
   created_at timestamptz not null default now(),
@@ -40,7 +46,7 @@ create table public.tags (
 create table public.works (
   id uuid primary key default gen_random_uuid(),
   title text not null,
-  author_id uuid references public.users(id) on delete set null,
+  author_id uuid references public.profiles(id) on delete set null,
   author_name text not null,
   year integer not null check (year >= 1900 and year <= 2100),
   genre text not null,
@@ -54,8 +60,8 @@ create table public.works (
   view_count integer not null default 0 check (view_count >= 0),
   like_count integer not null default 0 check (like_count >= 0),
   bookmark_count integer not null default 0 check (bookmark_count >= 0),
-  created_by uuid references public.users(id) on delete set null,
-  updated_by uuid references public.users(id) on delete set null,
+  created_by uuid references public.profiles(id) on delete set null,
+  updated_by uuid references public.profiles(id) on delete set null,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   published_at timestamptz
@@ -71,7 +77,7 @@ create table public.work_tags (
 create table public.community_posts (
   id uuid primary key default gen_random_uuid(),
   board_type public.community_board_type not null,
-  author_id uuid references public.users(id) on delete set null,
+  author_id uuid references public.profiles(id) on delete set null,
   title text not null,
   content text not null,
   is_anonymous boolean not null default false,
@@ -92,7 +98,7 @@ create table public.community_posts (
 create table public.community_comments (
   id uuid primary key default gen_random_uuid(),
   post_id uuid not null references public.community_posts(id) on delete cascade,
-  author_id uuid references public.users(id) on delete set null,
+  author_id uuid references public.profiles(id) on delete set null,
   content text not null,
   is_anonymous boolean not null default false,
   like_count integer not null default 0 check (like_count >= 0),
@@ -105,7 +111,7 @@ create table public.community_comments (
 create table public.comments (
   id uuid primary key default gen_random_uuid(),
   work_id uuid not null references public.works(id) on delete cascade,
-  author_id uuid references public.users(id) on delete set null,
+  author_id uuid references public.profiles(id) on delete set null,
   content text not null,
   like_count integer not null default 0 check (like_count >= 0),
   report_count integer not null default 0 check (report_count >= 0),
@@ -118,7 +124,7 @@ create table public.replies (
   id uuid primary key default gen_random_uuid(),
   comment_id uuid references public.comments(id) on delete cascade,
   community_comment_id uuid references public.community_comments(id) on delete cascade,
-  author_id uuid references public.users(id) on delete set null,
+  author_id uuid references public.profiles(id) on delete set null,
   content text not null,
   like_count integer not null default 0 check (like_count >= 0),
   report_count integer not null default 0 check (report_count >= 0),
@@ -133,7 +139,7 @@ create table public.replies (
 
 create table public.likes (
   id uuid primary key default gen_random_uuid(),
-  user_id uuid not null references public.users(id) on delete cascade,
+  user_id uuid not null references public.profiles(id) on delete cascade,
   work_id uuid references public.works(id) on delete cascade,
   post_id uuid references public.community_posts(id) on delete cascade,
   comment_id uuid references public.comments(id) on delete cascade,
@@ -155,7 +161,7 @@ create table public.likes (
 
 create table public.bookmarks (
   id uuid primary key default gen_random_uuid(),
-  user_id uuid not null references public.users(id) on delete cascade,
+  user_id uuid not null references public.profiles(id) on delete cascade,
   work_id uuid references public.works(id) on delete cascade,
   post_id uuid references public.community_posts(id) on delete cascade,
   created_at timestamptz not null default now(),
@@ -172,8 +178,8 @@ create table public.bookmarks (
 
 create table public.notifications (
   id uuid primary key default gen_random_uuid(),
-  recipient_id uuid not null references public.users(id) on delete cascade,
-  actor_id uuid references public.users(id) on delete set null,
+  recipient_id uuid not null references public.profiles(id) on delete cascade,
+  actor_id uuid references public.profiles(id) on delete set null,
   type public.notification_type not null,
   title text not null,
   body text,
@@ -185,7 +191,7 @@ create table public.notifications (
   created_at timestamptz not null default now()
 );
 
-create index users_role_idx on public.users(role);
+create index profiles_role_idx on public.profiles(role);
 create index works_visibility_created_at_idx on public.works(visibility, created_at desc);
 create index works_category_id_idx on public.works(category_id);
 create index works_author_id_idx on public.works(author_id);
@@ -211,8 +217,8 @@ begin
 end;
 $$;
 
-create trigger set_users_updated_at
-before update on public.users
+create trigger set_profiles_updated_at
+before update on public.profiles
 for each row execute function public.set_updated_at();
 
 create trigger set_categories_updated_at
@@ -248,7 +254,7 @@ set search_path = public
 as $$
   select exists (
     select 1
-    from public.users
+    from public.profiles
     where id = auth.uid()
       and role = 'admin'
       and is_blocked = false
@@ -264,13 +270,13 @@ set search_path = public
 as $$
   select exists (
     select 1
-    from public.users
+    from public.profiles
     where id = auth.uid()
       and is_blocked = false
   );
 $$;
 
-alter table public.users enable row level security;
+alter table public.profiles enable row level security;
 alter table public.categories enable row level security;
 alter table public.tags enable row level security;
 alter table public.works enable row level security;
@@ -283,21 +289,21 @@ alter table public.likes enable row level security;
 alter table public.bookmarks enable row level security;
 alter table public.notifications enable row level security;
 
-create policy "Users can read public profiles"
-on public.users for select
+create policy " can read public profiles"
+on public.profiles for select
 using (true);
 
-create policy "Users can insert own profile"
-on public.users for insert
+create policy "profiles can insert own profile"
+on public.profiles for insert
 with check (id = auth.uid());
 
-create policy "Users can update own profile"
-on public.users for update
+create policy "profiles can update own profile"
+on public.profiles for update
 using (id = auth.uid())
 with check (id = auth.uid());
 
-create policy "Admins can manage users"
-on public.users for all
+create policy "Admins can manage profiles"
+on public.profiles for all
 using (public.is_admin())
 with check (public.is_admin());
 
@@ -347,7 +353,7 @@ create policy "Everyone can read visible community posts"
 on public.community_posts for select
 using (deleted_at is null or public.is_admin());
 
-create policy "Active users can create community posts"
+create policy "Active profiles can create community posts"
 on public.community_posts for insert
 with check (author_id = auth.uid() and public.is_active_user());
 
@@ -365,7 +371,7 @@ create policy "Everyone can read visible community comments"
 on public.community_comments for select
 using (deleted_at is null or public.is_admin());
 
-create policy "Active users can create community comments"
+create policy "Active profiles can create community comments"
 on public.community_comments for insert
 with check (author_id = auth.uid() and public.is_active_user());
 
@@ -383,7 +389,7 @@ create policy "Everyone can read visible work comments"
 on public.comments for select
 using (deleted_at is null or public.is_admin());
 
-create policy "Active users can create work comments"
+create policy "Active profiles can create work comments"
 on public.comments for insert
 with check (author_id = auth.uid() and public.is_active_user());
 
@@ -401,7 +407,7 @@ create policy "Everyone can read visible replies"
 on public.replies for select
 using (deleted_at is null or public.is_admin());
 
-create policy "Active users can create replies"
+create policy "Active profiles can create replies"
 on public.replies for insert
 with check (author_id = auth.uid() and public.is_active_user());
 
@@ -415,35 +421,35 @@ on public.replies for all
 using (public.is_admin())
 with check (public.is_admin());
 
-create policy "Users can read own likes"
+create policy "profiles can read own likes"
 on public.likes for select
 using (user_id = auth.uid() or public.is_admin());
 
-create policy "Active users can create own likes"
+create policy "Active profiles can create own likes"
 on public.likes for insert
 with check (user_id = auth.uid() and public.is_active_user());
 
-create policy "Users can delete own likes"
+create policy "profiles can delete own likes"
 on public.likes for delete
 using (user_id = auth.uid() or public.is_admin());
 
-create policy "Users can read own bookmarks"
+create policy "profiles can read own bookmarks"
 on public.bookmarks for select
 using (user_id = auth.uid() or public.is_admin());
 
-create policy "Active users can create own bookmarks"
+create policy "Active profiles can create own bookmarks"
 on public.bookmarks for insert
 with check (user_id = auth.uid() and public.is_active_user());
 
-create policy "Users can delete own bookmarks"
+create policy "profiles can delete own bookmarks"
 on public.bookmarks for delete
 using (user_id = auth.uid() or public.is_admin());
 
-create policy "Users can read own notifications"
+create policy "profiles can read own notifications"
 on public.notifications for select
 using (recipient_id = auth.uid() or public.is_admin());
 
-create policy "Users can update own notifications"
+create policy "profiles can update own notifications"
 on public.notifications for update
 using (recipient_id = auth.uid())
 with check (recipient_id = auth.uid());

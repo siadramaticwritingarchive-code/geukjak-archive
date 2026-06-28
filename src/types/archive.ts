@@ -4,7 +4,9 @@ export type WorkSummary = {
   author: string;
   author_name?: string;
   year: number;
-  genre: string;
+ category: string;
+ genre: string;
+  logline?: string;
   synopsis?: string;
   poster_path?: string | null;
   script_pdf_path?: string | null;
@@ -29,7 +31,9 @@ export type WorkRecord = {
   author_id: string | null;
   author_name: string;
   year: number;
+  category: string;
   genre: string;
+  logline: string;
   synopsis: string;
   category_id: string | null;
   poster_path: string | null;
@@ -65,14 +69,28 @@ export type TagRecord = {
 export type WorkFormValues = {
   title: string;
   authorName: string;
+
   year: number;
+
+  category: string;
+
   genre: string;
+
+  logline: string; 
+
   synopsis: string;
-  categoryId: string;
+
   tagNames: string;
+
   visibility: 'draft' | 'published' | 'archived';
+
   isPdfDownloadAllowed: boolean;
+
   isFeatured: boolean;
-  posterFile?: FileList;
-  pdfFile?: FileList;
+
+  agreeCopyright: boolean;
+
+ posterFile?: FileList;
+
+ pdfFile?: FileList;
 };

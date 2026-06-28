@@ -8,14 +8,21 @@ export type CommunityPostFilters = {
   pageSize?: number;
 };
 
+const unavailableError = new Error(
+  'Supabase is not configured. Add VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY to .env.local.',
+);
+
 export const communityService = {
   listPosts({ boardType, search, page = 1, pageSize = 20 }: CommunityPostFilters = {}) {
+    if (!supabase) {
+      return Promise.resolve({ data: [], error: unavailableError, count: 0 } as any);
+    }
     const from = (page - 1) * pageSize;
     const to = from + pageSize - 1;
 
     let query = supabase
       .from('community_posts')
-      .select('*, users(id, display_name, avatar_path)', { count: 'exact' })
+      .select('*, profiles(id, display_name, avatar_path)', { count: 'exact' })
       .is('deleted_at', null)
       .order('is_pinned', { ascending: false })
       .order('created_at', { ascending: false })
@@ -33,17 +40,25 @@ export const communityService = {
   },
 
   getPostById(postId: string) {
+    if (!supabase) {
+      return Promise.resolve({ data: null, error: unavailableError } as any);
+    }
+
     return supabase
       .from('community_posts')
-      .select('*, users(id, display_name, avatar_path)')
+      .select('*, profiles(id, display_name, avatar_path)')
       .eq('id', postId)
       .single();
   },
 
   getPostComments(postId: string) {
+    if (!supabase) {
+      return Promise.resolve({ data: [], error: unavailableError } as any);
+    }
+
     return supabase
       .from('community_comments')
-      .select('*, users(id, display_name, avatar_path), replies(*)')
+      .select('*, profiles(id, display_name, avatar_path), replies(*)')
       .eq('post_id', postId)
       .is('deleted_at', null)
       .order('created_at', { ascending: true });

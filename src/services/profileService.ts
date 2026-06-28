@@ -1,6 +1,10 @@
 import { supabase } from '../lib/supabase';
 import type { UserProfile } from '../types/user';
 
+const unavailableError = new Error(
+  'Supabase is not configured. Add VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY to .env.local.',
+);
+
 type UpdateProfileInput = {
   displayName: string;
   bio: string | null;
@@ -9,8 +13,12 @@ type UpdateProfileInput = {
 
 export const profileService = {
   getProfile(userId: string) {
+    if (!supabase) {
+      return Promise.resolve({ data: null, error: unavailableError } as any);
+    }
+
     return supabase
-      .from('users')
+      .from('profiles')
       .select('*')
       .eq('id', userId)
       .returns<UserProfile[]>()
@@ -18,8 +26,12 @@ export const profileService = {
   },
 
   async isDisplayNameAvailable(displayName: string, currentUserId?: string) {
+    if (!supabase) {
+      return false;
+    }
+
     let query = supabase
-      .from('users')
+      .from('profiles')
       .select('id')
       .eq('display_name', displayName)
       .limit(1);
@@ -38,8 +50,12 @@ export const profileService = {
   },
 
   updateProfile(userId: string, input: UpdateProfileInput) {
+    if (!supabase) {
+      return Promise.resolve({ data: null, error: unavailableError } as any);
+    }
+
     return supabase
-      .from('users')
+      .from('profiles')
       .update({
         display_name: input.displayName,
         bio: input.bio,
@@ -52,6 +68,10 @@ export const profileService = {
   },
 
   async uploadAvatar(userId: string, file: File) {
+    if (!supabase) {
+      throw unavailableError;
+    }
+
     const extension = file.name.split('.').pop() ?? 'webp';
     const filePath = `${userId}/avatar-${Date.now()}.${extension}`;
 
@@ -70,11 +90,45 @@ export const profileService = {
   },
 
   getAvatarPublicUrl(path: string | null) {
-    if (!path) {
+    if (!path || !supabase) {
       return null;
     }
 
     const { data } = supabase.storage.from('profile-images').getPublicUrl(path);
     return data.publicUrl;
+  },
+  async listProfiles() {
+  if (!supabase) {
+    throw unavailableError;
   }
+
+  const { data, error } = await supabase
+    .from('profiles')
+    .select('*')
+    .order('created_at', { ascending: false });
+
+  if (error) {
+    throw error;
+  }
+
+  return data as UserProfile[];
+},
+
+async updateRole(userId: string, role: UserProfile['role']) {
+  if (!supabase) {
+    throw unavailableError;
+  }
+
+  const { error } = await supabase
+    .from('profiles')
+    .update({
+      role
+    })
+    .eq('id', userId);
+
+  if (error) {
+    throw error;
+  }
+}
+
 };
