@@ -1,4 +1,5 @@
 import { useNavigate } from 'react-router';
+import { toast } from 'sonner';
 import { PageHeader } from '../../components/PageHeader';
 import { WorkForm } from '../../components/archive/WorkForm';
 import { useAuth } from '../../hooks/useAuth';
@@ -15,7 +16,7 @@ function splitTags(tagNames: string) {
 export function ArchiveCreatePage() {
   const navigate = useNavigate();
   const { user, profile } = useAuth();
-  alert(user?.id);
+  toast.success(user?.id ?? '');
 
 
   const handleSubmit = async (values: WorkFormValues) => {
@@ -31,7 +32,7 @@ export function ArchiveCreatePage() {
   throw new Error('작품 등록 권한이 없습니다.');
 }
 
-alert('createWork 호출!');
+toast.success('createWork 호출!');
 
     try {
   const workId = await workService.createWork({
@@ -52,11 +53,11 @@ alert('createWork 호출!');
   });
 
 
-  alert('등록 성공!');
+  toast.success('등록 성공!');
   navigate(`/archive/${workId}`);
 } catch (error) {
   console.error(error);
-  alert(error instanceof Error ? error.message : '알 수 없는 오류가 발생했습니다.');
+  toast.error(error instanceof Error ? error.message : '알 수 없는 오류가 발생했습니다.');
 }
 
   };

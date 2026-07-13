@@ -38,25 +38,25 @@ create policy "Admins can upload work images"
 on storage.objects for insert
 with check (
   bucket_id = 'work-images'
-  and public.is_admin()
+  and public.can_manage_work_archive()
 );
 
 create policy "Admins can update work images"
 on storage.objects for update
 using (
   bucket_id = 'work-images'
-  and public.is_admin()
+  and public.can_manage_work_archive()
 )
 with check (
   bucket_id = 'work-images'
-  and public.is_admin()
+  and public.can_manage_work_archive()
 );
 
 create policy "Admins can delete work images"
 on storage.objects for delete
 using (
   bucket_id = 'work-images'
-  and public.is_admin()
+  and public.can_manage_work_archive()
 );
 
 create policy "profiles can read downloadable work PDFs"
@@ -76,25 +76,25 @@ create policy "Admins can upload work PDFs"
 on storage.objects for insert
 with check (
   bucket_id = 'work-pdfs'
-  and public.is_admin()
+  and public.can_manage_work_archive()
 );
 
 create policy "Admins can update work PDFs"
 on storage.objects for update
 using (
   bucket_id = 'work-pdfs'
-  and public.is_admin()
+  and public.can_manage_work_archive()
 )
 with check (
   bucket_id = 'work-pdfs'
-  and public.is_admin()
+  and public.can_manage_work_archive()
 );
 
 create policy "Admins can delete work PDFs"
 on storage.objects for delete
 using (
   bucket_id = 'work-pdfs'
-  and public.is_admin()
+  and public.can_manage_work_archive()
 );
 
 create policy "Anyone can read profile images"

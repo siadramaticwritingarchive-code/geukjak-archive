@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router';
 import { AlertCircle, CheckCircle2, Image as ImageIcon, Plus, Sparkles, UploadCloud } from 'lucide-react';
+import { toast } from 'sonner';
 import { PageHeader } from '../../components/PageHeader';
 import { getSupabaseClient } from '../../lib/supabase';
 
@@ -102,9 +103,7 @@ export function RecommendedCreatePage() {
     setShowLeavePrompt(true);
   };
 const handleSubmit = async () => {
-  console.log(draft);
-
-  alert('등록 준비 완료!');
+  toast.success('등록 준비 완료!');
 };
 
 

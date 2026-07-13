@@ -28,6 +28,9 @@ export type Database = {
       community_posts: GenericTable;
       community_comments: GenericTable;
       notifications: GenericTable;
+      notices: GenericTable;
+      reports: GenericTable;
+      site_settings: GenericTable;
     };
     Views: Record<string, never>;
     Functions: {

@@ -4,7 +4,7 @@ import { AdminPageShell } from './AdminPageShell';
 
 export function AdminDashboardPage() {
   const { effectiveRole, canManageAdminPermissions } = useAuth();
-  const roleLabel = effectiveRole === 'super_admin' ? '학회장단' : effectiveRole === 'staff' ? '학회원' : '일반 회원';
+  const roleLabel = effectiveRole === 'admin' ? '학회장단' : effectiveRole === 'staff' ? '학회원' : '일반 회원';
 
   return (
     <AdminPageShell

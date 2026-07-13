@@ -1,75 +1,179 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router';
-import { Bookmark, CalendarDays, Download, Edit, Eye, FileText, Flag, Heart, MessageCircle, Share2, ShieldCheck, Sparkles, Trash2 } from 'lucide-react';
+import {
+  Bookmark,
+  CalendarDays,
+  Download,
+  Edit,
+  FileText,
+  Flag,
+  Heart,
+  MessageCircle,
+  Share2,
+  ShieldCheck,
+  Sparkles,
+  Trash2,
+} from 'lucide-react';
 import { PageHeader } from '../../components/PageHeader';
 import { useAuth } from '../../hooks/useAuth';
+import { commentService } from '../../services/commentService';
+import { reportService } from '../../services/reportService';
 import { workService } from '../../services/workService';
 import type { WorkRecord } from '../../types/archive';
+import type { CommentRecord } from '../../types/comment';
+
+type CommentView = CommentRecord & {
+  likeCount: number;
+  isLiked: boolean;
+};
+
+const reportReason = '부적절한 콘텐츠';
+
+function formatDateTime(value: string) {
+  return new Intl.DateTimeFormat('ko-KR', {
+    dateStyle: 'medium',
+    timeStyle: 'short',
+  }).format(new Date(value));
+}
+
+function getDisplayName(comment: CommentRecord) {
+  return comment.profiles?.display_name ?? '알 수 없는 사용자';
+}
 
 export function WorkDetailPage() {
   const { workId } = useParams();
   const navigate = useNavigate();
   const { user, profile } = useAuth();
   const [work, setWork] = useState<WorkRecord | null>(null);
+  const [comments, setComments] = useState<CommentView[]>([]);
+  const [relatedWorks, setRelatedWorks] = useState<WorkRecord[]>([]);
+  const [recentWorks, setRecentWorks] = useState<WorkRecord[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [isCommentsLoading, setIsCommentsLoading] = useState(false);
   const [isBookmarked, setIsBookmarked] = useState(false);
+  const [isLiked, setIsLiked] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [actionMessage, setActionMessage] = useState<string | null>(null);
   const [showCopyrightModal, setShowCopyrightModal] = useState(false);
   const [hideCopyrightModal, setHideCopyrightModal] = useState(false);
-  const [liked, setLiked] = useState(false);
-  const [bookmarkedState, setBookmarkedState] = useState(false);
   const [draftComment, setDraftComment] = useState('');
-  const [comments, setComments] = useState<Array<{ id: number; author: string; role: string; content: string; createdAt: string; likes: number; replies: Array<{ id: number; author: string; content: string; createdAt: string }> }>>([
-    {
-      id: 1,
-      author: '윤서',
-      role: 'dramaticwriting',
-      content: '작품의 분위기가 정말 섬세해서 몰입감이 좋았습니다.',
-      createdAt: '2시간 전',
-      likes: 3,
-      replies: [{ id: 11, author: '이효정', content: '감사합니다. 다음 작업도 기대해 주세요.', createdAt: '1시간 전' }]
-    }
-  ]);
+  const [pdfUrl, setPdfUrl] = useState<string | null>(null);
   const didIncrementView = useRef(false);
 
   const isAdmin = profile?.role === 'admin';
+  const canEditWork = isAdmin || (Boolean(user) && work?.created_by === user?.id);
   const posterUrl = useMemo(() => workService.getPosterUrl(work?.poster_path ?? null), [work?.poster_path]);
   const tags = work?.work_tags?.map((workTag) => workTag.tags?.name).filter(Boolean) ?? [];
 
+  const loadComments = async (targetWorkId: string, userId?: string) => {
+    setIsCommentsLoading(true);
+
+    try {
+      const commentRows = await commentService.getComments(targetWorkId);
+      const commentViews = await Promise.all(
+        commentRows.map(async (comment) => {
+          const [likeCount, likedByUser] = await Promise.all([
+            commentService.getLikeCount(comment.id),
+            userId ? commentService.isLiked(comment.id, userId) : Promise.resolve(false),
+          ]);
+
+          return {
+            ...comment,
+            likeCount,
+            isLiked: likedByUser,
+          };
+        }),
+      );
+
+      setComments(commentViews);
+    } catch {
+      setActionMessage('댓글을 불러오지 못했습니다.');
+    } finally {
+      setIsCommentsLoading(false);
+    }
+  };
+
   useEffect(() => {
     if (!workId) {
+      setError('작품 경로가 올바르지 않습니다.');
+      setIsLoading(false);
       return;
     }
 
-    const shouldShowModal = !hideCopyrightModal && !sessionStorage.getItem('sia-copyright-modal-dismissed');
+    const shouldShowModal =
+      !sessionStorage.getItem('sia-copyright-modal-dismissed');
     if (shouldShowModal) {
       setShowCopyrightModal(true);
     }
 
     let isMounted = true;
 
-    workService
-      .getWorkById(workId)
-      .then((data) => {
-        if (isMounted) {
-          setWork(data);
+    const loadWork = async () => {
+      setIsLoading(true);
+      setError(null);
+
+      try {
+        const [workData, publishedWorks] = await Promise.all([
+          workService.getWorkById(workId),
+          workService.listPublishedWorks({ sort: 'latest' }),
+        ]);
+
+        if (!isMounted) {
+          return;
         }
-      })
-      .catch(() => {
+
+        if (!workData) {
+          setWork(null);
+          setError('작품을 찾을 수 없습니다.');
+          return;
+        }
+
+        setWork(workData);
+        setRelatedWorks(
+          publishedWorks
+            .filter((item) => {
+              if (item.id === workData.id) {
+                return false;
+              }
+
+              if (workData.category_id) {
+                return item.category_id === workData.category_id;
+              }
+
+              return item.category === workData.category;
+            })
+            .slice(0, 3),
+        );
+        setRecentWorks(
+          publishedWorks
+            .filter((item) => item.id !== workData.id)
+            .slice(0, 3),
+        );
+      } catch {
         if (isMounted) {
           setError('작품을 불러오지 못했습니다.');
         }
-      })
-      .finally(() => {
+      } finally {
         if (isMounted) {
           setIsLoading(false);
         }
-      });
+      }
+    };
+
+    void loadWork();
 
     return () => {
       isMounted = false;
     };
   }, [workId]);
+
+  useEffect(() => {
+    if (!workId) {
+      return;
+    }
+
+    void loadComments(workId, user?.id);
+  }, [user?.id, workId]);
 
   useEffect(() => {
     if (!workId || didIncrementView.current) {
@@ -82,11 +186,60 @@ export function WorkDetailPage() {
 
   useEffect(() => {
     if (!workId || !user) {
+      setIsBookmarked(false);
+      setIsLiked(false);
       return;
     }
 
-    workService.isBookmarked(workId, user.id).then(setIsBookmarked).catch(() => setIsBookmarked(false));
+    let isMounted = true;
+
+    Promise.all([
+      workService.isBookmarked(workId, user.id),
+      workService.isLiked(workId, user.id),
+    ])
+      .then(([bookmarked, liked]) => {
+        if (isMounted) {
+          setIsBookmarked(bookmarked);
+          setIsLiked(liked);
+        }
+      })
+      .catch(() => {
+        if (isMounted) {
+          setIsBookmarked(false);
+          setIsLiked(false);
+        }
+      });
+
+    return () => {
+      isMounted = false;
+    };
   }, [user, workId]);
+
+  useEffect(() => {
+    if (!work?.script_pdf_path || !work.is_pdf_download_allowed) {
+      setPdfUrl(null);
+      return;
+    }
+
+    let isMounted = true;
+
+    workService
+      .getPdfUrl(work.script_pdf_path)
+      .then((url) => {
+        if (isMounted) {
+          setPdfUrl(url);
+        }
+      })
+      .catch(() => {
+        if (isMounted) {
+          setPdfUrl(null);
+        }
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [work?.is_pdf_download_allowed, work?.script_pdf_path]);
 
   const handleBookmark = async () => {
     if (!workId || !user) {
@@ -103,12 +256,87 @@ export function WorkDetailPage() {
 
       return {
         ...currentWork,
-        bookmark_count: Math.max(
-          currentWork.bookmark_count + (nextState ? 1 : -1),
-          0,
-        )
+        bookmark_count: Math.max(currentWork.bookmark_count + (nextState ? 1 : -1), 0),
       };
     });
+  };
+
+  const handleLike = async () => {
+    if (!workId || !user) {
+      navigate('/login');
+      return;
+    }
+
+    const nextState = await workService.toggleLike(workId, user.id);
+    setIsLiked(nextState);
+    setWork((currentWork) => {
+      if (!currentWork) {
+        return currentWork;
+      }
+
+      return {
+        ...currentWork,
+        like_count: Math.max(currentWork.like_count + (nextState ? 1 : -1), 0),
+      };
+    });
+  };
+
+  const handleShare = async () => {
+    const shareUrl = window.location.href;
+
+    if (navigator.share && work) {
+      await navigator.share({
+        title: work.title,
+        text: `${work.title} - ${work.author_name}`,
+        url: shareUrl,
+      });
+      return;
+    }
+
+    await navigator.clipboard.writeText(shareUrl);
+    setActionMessage('작품 링크를 복사했습니다.');
+  };
+
+  const handleReportWork = async () => {
+    if (!workId || !user) {
+      navigate('/login');
+      return;
+    }
+
+    const description = window.prompt('신고 내용을 입력해 주세요.');
+    if (!description?.trim()) {
+      return;
+    }
+
+    await reportService.createReport({
+      reporter_id: user.id,
+      target_type: 'work',
+      target_id: workId,
+      reason: reportReason,
+      description: description.trim(),
+    });
+    setActionMessage('신고가 접수되었습니다.');
+  };
+
+  const handleReportComment = async (commentId: string) => {
+    if (!user) {
+      navigate('/login');
+      return;
+    }
+
+    const description = window.prompt('신고 내용을 입력해 주세요.');
+    if (!description?.trim()) {
+      return;
+    }
+
+    await reportService.createReport({
+      reporter_id: user.id,
+      target_type: 'comment',
+      target_id: commentId,
+      reason: reportReason,
+      description: description.trim(),
+    });
+    setActionMessage('댓글 신고가 접수되었습니다.');
   };
 
   const handleDownload = async () => {
@@ -116,7 +344,7 @@ export function WorkDetailPage() {
       return;
     }
 
-    const url = await workService.getPdfUrl(work.script_pdf_path);
+    const url = pdfUrl ?? await workService.getPdfUrl(work.script_pdf_path);
     if (url) {
       window.open(url, '_blank', 'noopener,noreferrer');
     }
@@ -131,24 +359,73 @@ export function WorkDetailPage() {
     navigate('/archive');
   };
 
-  const handleCommentSubmit = () => {
-    if (!draftComment.trim()) {
+  const handleCommentSubmit = async () => {
+    if (!workId || !user) {
+      navigate('/login');
       return;
     }
 
-    setComments((prev) => [
-      {
-        id: Date.now(),
-        author: profile?.display_name ?? '익명',
-        role: profile?.role ?? 'dramaticwriting',
-        content: draftComment.trim(),
-        createdAt: '방금 전',
-        likes: 0,
-        replies: []
-      },
-      ...prev
-    ]);
+    const content = draftComment.trim();
+    if (!content) {
+      return;
+    }
+
+    await commentService.createComment({
+      work_id: workId,
+      author_id: user.id,
+      content,
+    });
     setDraftComment('');
+    await loadComments(workId, user.id);
+  };
+
+  const handleCommentLike = async (commentId: string) => {
+    if (!user) {
+      navigate('/login');
+      return;
+    }
+
+    const nextState = await commentService.toggleLike(commentId, user.id);
+    setComments((currentComments) =>
+      currentComments.map((comment) => {
+        if (comment.id !== commentId) {
+          return comment;
+        }
+
+        return {
+          ...comment,
+          isLiked: nextState,
+          likeCount: Math.max(comment.likeCount + (nextState ? 1 : -1), 0),
+        };
+      }),
+    );
+  };
+
+  const handleCommentEdit = async (comment: CommentView) => {
+    const content = window.prompt('댓글을 수정해 주세요.', comment.content);
+    if (!content?.trim()) {
+      return;
+    }
+
+    await commentService.updateComment(comment.id, {
+      content: content.trim(),
+    });
+
+    if (workId) {
+      await loadComments(workId, user?.id);
+    }
+  };
+
+  const handleCommentDelete = async (commentId: string) => {
+    if (!window.confirm('댓글을 삭제하시겠습니까?')) {
+      return;
+    }
+
+    await commentService.deleteComment(commentId);
+
+    if (workId) {
+      await loadComments(workId, user?.id);
+    }
   };
 
   const handleCopyrightAgree = () => {
@@ -206,11 +483,18 @@ export function WorkDetailPage() {
           </div>
         </div>
       ) : null}
+
       <PageHeader
-        eyebrow={work.categories?.name ?? 'Work Detail'}
+        eyebrow={work.categories?.name ?? work.category}
         title={work.title}
         description={`${work.author_name} · ${work.year} · ${work.genre}`}
       />
+
+      {actionMessage ? (
+        <div className="rounded-[20px] border border-[#B08D57]/20 bg-[#F8F6F1] px-4 py-3 text-sm text-[#16233B]">
+          {actionMessage}
+        </div>
+      ) : null}
 
       <div className="grid gap-8 xl:grid-cols-[1.15fr_0.85fr]">
         <section className="space-y-6">
@@ -218,12 +502,12 @@ export function WorkDetailPage() {
             <div className="grid gap-0 lg:grid-cols-[0.9fr_1.1fr]">
               <div className="flex aspect-[4/5] items-center justify-center bg-gradient-to-br from-[#16233B] via-[#1F2D4A] to-[#B08D57] p-6 text-white">
                 {posterUrl ? (
-                  <img className="h-full w-full rounded-[24px] object-cover" src={posterUrl} alt="" />
+                  <img className="h-full w-full rounded-[24px] object-cover" src={posterUrl} alt={work.title} />
                 ) : (
                   <div className="rounded-[24px] border border-white/20 bg-white/10 p-8 text-center backdrop-blur">
                     <Sparkles size={28} className="mx-auto text-[#F7E8C7]" />
                     <p className="mt-3 text-sm font-semibold uppercase tracking-[0.24em] text-[#F7E8C7]">Cover</p>
-                    <p className="mt-2 text-sm text-white/80">placeholder preview</p>
+                    <p className="mt-2 text-sm text-white/80">{work.title}</p>
                   </div>
                 )}
               </div>
@@ -258,15 +542,25 @@ export function WorkDetailPage() {
                   <button type="button" onClick={() => void handleBookmark()} className="inline-flex items-center gap-2 rounded-full border border-ink/10 bg-white/80 px-4 py-2.5 text-sm font-semibold text-[#16233B] transition hover:border-[#B08D57]">
                     <Bookmark size={16} fill={isBookmarked ? 'currentColor' : 'none'} className={isBookmarked ? 'text-[#B08D57]' : ''} /> 즐겨찾기
                   </button>
-                  <button type="button" onClick={() => setLiked((prev) => !prev)} className="inline-flex items-center gap-2 rounded-full border border-ink/10 bg-white/80 px-4 py-2.5 text-sm font-semibold text-[#16233B] transition hover:border-[#B08D57]">
-                    <Heart size={16} fill={liked ? 'currentColor' : 'none'} className={liked ? 'text-[#B08D57]' : ''} /> 좋아요
+                  <button type="button" onClick={() => void handleLike()} className="inline-flex items-center gap-2 rounded-full border border-ink/10 bg-white/80 px-4 py-2.5 text-sm font-semibold text-[#16233B] transition hover:border-[#B08D57]">
+                    <Heart size={16} fill={isLiked ? 'currentColor' : 'none'} className={isLiked ? 'text-[#B08D57]' : ''} /> 좋아요
                   </button>
-                  <button type="button" className="inline-flex items-center gap-2 rounded-full border border-ink/10 bg-white/80 px-4 py-2.5 text-sm font-semibold text-[#16233B] transition hover:border-[#B08D57]">
+                  <button type="button" onClick={() => void handleShare()} className="inline-flex items-center gap-2 rounded-full border border-ink/10 bg-white/80 px-4 py-2.5 text-sm font-semibold text-[#16233B] transition hover:border-[#B08D57]">
                     <Share2 size={16} /> 공유하기
                   </button>
-                  <button type="button" className="inline-flex items-center gap-2 rounded-full border border-ink/10 bg-white/80 px-4 py-2.5 text-sm font-semibold text-[#16233B] transition hover:border-[#B08D57]">
+                  <button type="button" onClick={() => void handleReportWork()} className="inline-flex items-center gap-2 rounded-full border border-ink/10 bg-white/80 px-4 py-2.5 text-sm font-semibold text-[#16233B] transition hover:border-[#B08D57]">
                     <Flag size={16} /> 신고하기
                   </button>
+                  {canEditWork ? (
+                    <>
+                      <Link to={`/archive/${work.id}/edit`} className="inline-flex items-center gap-2 rounded-full border border-ink/10 bg-white/80 px-4 py-2.5 text-sm font-semibold text-[#16233B] transition hover:border-[#B08D57]">
+                        <Edit size={16} /> 수정
+                      </Link>
+                      <button type="button" onClick={() => void handleDelete()} className="inline-flex items-center gap-2 rounded-full border border-ink/10 bg-white/80 px-4 py-2.5 text-sm font-semibold text-[#16233B] transition hover:border-red-300">
+                        <Trash2 size={16} /> 삭제
+                      </button>
+                    </>
+                  ) : null}
                 </div>
               </div>
             </div>
@@ -276,15 +570,11 @@ export function WorkDetailPage() {
             <div className="space-y-6">
               <div>
                 <p className="text-[11px] font-semibold uppercase tracking-[0.28em] text-[#B08D57]">로그라인</p>
-                <p className="mt-3 text-base leading-8 text-charcoal/80">{work.synopsis}</p>
+                <p className="mt-3 text-base leading-8 text-charcoal/80">{work.logline}</p>
               </div>
               <div>
                 <p className="text-[11px] font-semibold uppercase tracking-[0.28em] text-[#B08D57]">작품 소개</p>
-                <p className="mt-3 text-base leading-8 text-charcoal/80">{work.synopsis}</p>
-              </div>
-              <div>
-                <p className="text-[11px] font-semibold uppercase tracking-[0.28em] text-[#B08D57]">기획 의도</p>
-                <p className="mt-3 text-base leading-8 text-charcoal/80">이 작품은 학우들의 창작 이해를 돕기 위해 준비된 플레이스홀더 상세 페이지입니다.</p>
+                <p className="mt-3 whitespace-pre-line text-base leading-8 text-charcoal/80">{work.synopsis}</p>
               </div>
             </div>
 
@@ -296,18 +586,25 @@ export function WorkDetailPage() {
             <div className="mt-6 rounded-[24px] border border-ink/10 bg-[#F8F6F1] p-5">
               <div className="flex items-center justify-between gap-3">
                 <div>
-                  <p className="text-[11px] font-semibold uppercase tracking-[0.28em] text-[#B08D57]">PDF Viewer</p>
-                  <p className="mt-2 text-sm text-charcoal/70">플레이스홀더 PDF 뷰어 영역입니다.</p>
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.28em] text-[#B08D57]">PDF</p>
+                  <p className="mt-2 text-sm text-charcoal/70">
+                    {work.script_pdf_path && work.is_pdf_download_allowed ? '첨부된 작품 문서를 열람할 수 있습니다.' : '공개된 작품 문서가 없습니다.'}
+                  </p>
                 </div>
-                <button type="button" onClick={() => void handleDownload()} disabled={!work.script_pdf_path || !work.is_pdf_download_allowed} className="btn-primary rounded-full px-4 py-2.5 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-50">
+                <button type="button" onClick={() => void handleDownload()} disabled={!work.script_pdf_path || !work.is_pdf_download_allowed} className="btn-primary inline-flex items-center gap-2 rounded-full px-4 py-2.5 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-50">
+                  <Download size={16} />
                   PDF 다운로드
                 </button>
               </div>
-              <div className="mt-4 flex h-48 items-center justify-center rounded-[20px] border border-dashed border-ink/15 bg-white/80 text-charcoal/60">
-                <div className="text-center">
-                  <FileText size={28} className="mx-auto text-[#B08D57]" />
-                  <p className="mt-3 text-sm">PDF 미리보기 영역</p>
-                </div>
+              <div className="mt-4 flex min-h-48 items-center justify-center rounded-[20px] border border-dashed border-ink/15 bg-white/80 text-charcoal/60">
+                {pdfUrl ? (
+                  <iframe title={`${work.title} PDF`} src={pdfUrl} className="h-96 w-full rounded-[20px] border-0 bg-white" />
+                ) : (
+                  <div className="text-center">
+                    <FileText size={28} className="mx-auto text-[#B08D57]" />
+                    <p className="mt-3 text-sm">열람 가능한 PDF가 없습니다.</p>
+                  </div>
+                )}
               </div>
             </div>
           </div>
@@ -322,31 +619,49 @@ export function WorkDetailPage() {
             </div>
 
             <div className="mt-6 rounded-[24px] border border-ink/10 bg-[#F8F6F1] p-4">
-              <textarea value={draftComment} onChange={(event) => setDraftComment(event.target.value)} rows={4} className="w-full resize-none rounded-[20px] border border-ink/10 bg-white p-4 text-sm outline-none" placeholder="작품에 대한 의견을 남겨 보세요." />
-              <div className="mt-3 flex items-center justify-between gap-3">
-                <p className="text-sm text-charcoal/60">UI 전용 댓글 입력입니다.</p>
-                <button type="button" onClick={handleCommentSubmit} className="btn-primary rounded-full px-4 py-2 text-sm font-semibold">댓글 작성</button>
+              <textarea value={draftComment} onChange={(event) => setDraftComment(event.target.value)} rows={4} className="w-full resize-none rounded-[20px] border border-ink/10 bg-white p-4 text-sm outline-none" aria-label="댓글 내용" />
+              <div className="mt-3 flex items-center justify-end gap-3">
+                <button type="button" onClick={() => void handleCommentSubmit()} className="btn-primary rounded-full px-4 py-2 text-sm font-semibold">댓글 작성</button>
               </div>
             </div>
 
             <div className="mt-6 space-y-4">
-              {comments.map((comment) => (
-                <div key={comment.id} className="rounded-[24px] border border-ink/10 bg-white p-4 shadow-sm">
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <p className="font-semibold text-[#16233B]">{comment.author}</p>
-                      <p className="mt-1 text-sm text-charcoal/60">{comment.role} · {comment.createdAt}</p>
+              {isCommentsLoading ? (
+                <div className="rounded-[24px] border border-ink/10 bg-white p-4 text-sm text-charcoal/60">댓글을 불러오는 중입니다.</div>
+              ) : null}
+
+              {!isCommentsLoading && comments.length === 0 ? (
+                <div className="rounded-[24px] border border-ink/10 bg-white p-4 text-sm text-charcoal/60">아직 작성된 댓글이 없습니다.</div>
+              ) : null}
+
+              {comments.map((comment) => {
+                const canManageComment = isAdmin || comment.author_id === user?.id;
+
+                return (
+                  <div key={comment.id} className="rounded-[24px] border border-ink/10 bg-white p-4 shadow-sm">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <p className="font-semibold text-[#16233B]">{getDisplayName(comment)}</p>
+                        <p className="mt-1 text-sm text-charcoal/60">{formatDateTime(comment.created_at)}</p>
+                      </div>
+                      <button type="button" onClick={() => void handleReportComment(comment.id)} className="text-sm text-charcoal/60">신고</button>
                     </div>
-                    <button type="button" className="text-sm text-charcoal/60">수정</button>
+                    <p className="mt-3 whitespace-pre-line text-sm leading-7 text-charcoal/75">{comment.content}</p>
+                    <div className="mt-4 flex flex-wrap gap-3 text-sm text-charcoal/60">
+                      <button type="button" onClick={() => void handleCommentLike(comment.id)} className="inline-flex items-center gap-1.5">
+                        <Heart size={14} fill={comment.isLiked ? 'currentColor' : 'none'} className="text-[#B08D57]" /> {comment.likeCount}
+                      </button>
+                      <span className="inline-flex items-center gap-1.5"><MessageCircle size={14} className="text-[#B08D57]" /> 0</span>
+                      {canManageComment ? (
+                        <>
+                          <button type="button" onClick={() => void handleCommentEdit(comment)} className="text-[#16233B]">수정</button>
+                          <button type="button" onClick={() => void handleCommentDelete(comment.id)} className="text-[#16233B]">삭제</button>
+                        </>
+                      ) : null}
+                    </div>
                   </div>
-                  <p className="mt-3 text-sm leading-7 text-charcoal/75">{comment.content}</p>
-                  <div className="mt-4 flex flex-wrap gap-3 text-sm text-charcoal/60">
-                    <span className="inline-flex items-center gap-1.5"><Heart size={14} className="text-[#B08D57]" /> {comment.likes}</span>
-                    <span className="inline-flex items-center gap-1.5"><MessageCircle size={14} className="text-[#B08D57]" /> {comment.replies.length}</span>
-                    <button type="button" className="text-[#16233B]">삭제</button>
-                  </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </div>
         </section>
@@ -356,22 +671,28 @@ export function WorkDetailPage() {
             <p className="text-[11px] font-semibold uppercase tracking-[0.28em] text-[#B08D57]">작성자 정보</p>
             <div className="mt-4 rounded-[24px] border border-ink/10 bg-white p-4">
               <div className="flex items-center gap-3">
-                <div className="flex h-11 w-11 items-center justify-center rounded-full bg-[#16233B] text-sm font-semibold text-white">{profile?.display_name?.charAt(0) ?? '이'}</div>
+                <div className="flex h-11 w-11 items-center justify-center rounded-full bg-[#16233B] text-sm font-semibold text-white">{work.author_name.charAt(0)}</div>
                 <div>
                   <p className="font-semibold text-[#16233B]">{work.author_name}</p>
-                  <p className="text-sm text-charcoal/60">Student · 극작과</p>
+                  <p className="text-sm text-charcoal/60">{work.genre} · {work.year}</p>
                 </div>
               </div>
-              <p className="mt-4 text-sm leading-7 text-charcoal/70">이 작품은 학우들의 시청과 피드백을 위한 플레이스홀더 상세 페이지입니다.</p>
+              <p className="mt-4 text-sm leading-7 text-charcoal/70">{work.logline}</p>
             </div>
           </div>
 
           <div className="rounded-[32px] border border-ink/10 bg-white/90 p-6 shadow-[0_18px_45px_rgba(22,35,59,0.08)]">
             <p className="text-[11px] font-semibold uppercase tracking-[0.28em] text-[#B08D57]">관련 작품</p>
             <div className="mt-4 space-y-3">
-              <div className="rounded-[20px] border border-ink/10 bg-[#F8F6F1] p-3 text-sm text-charcoal/70">같은 카테고리 작품</div>
-              <div className="rounded-[20px] border border-ink/10 bg-[#F8F6F1] p-3 text-sm text-charcoal/70">최근 등록 작품</div>
-              <div className="rounded-[20px] border border-ink/10 bg-[#F8F6F1] p-3 text-sm text-charcoal/70">추천 작품 더 보기</div>
+              {relatedWorks.length > 0 ? (
+                relatedWorks.map((item) => (
+                  <Link key={item.id} to={`/archive/${item.id}`} className="block rounded-[20px] border border-ink/10 bg-[#F8F6F1] p-3 text-sm text-charcoal/70 transition hover:border-[#B08D57]">
+                    {item.title}
+                  </Link>
+                ))
+              ) : (
+                <div className="rounded-[20px] border border-ink/10 bg-[#F8F6F1] p-3 text-sm text-charcoal/70">관련 작품이 없습니다.</div>
+              )}
             </div>
           </div>
 
@@ -381,9 +702,15 @@ export function WorkDetailPage() {
               <CalendarDays size={16} className="text-[#B08D57]" />
             </div>
             <div className="mt-4 space-y-3">
-              <div className="rounded-[20px] border border-ink/10 bg-[#F8F6F1] p-3 text-sm text-charcoal/70">새로운 시나리오 1</div>
-              <div className="rounded-[20px] border border-ink/10 bg-[#F8F6F1] p-3 text-sm text-charcoal/70">새로운 희곡 2</div>
-              <div className="rounded-[20px] border border-ink/10 bg-[#F8F6F1] p-3 text-sm text-charcoal/70">새로운 드라마 3</div>
+              {recentWorks.length > 0 ? (
+                recentWorks.map((item) => (
+                  <Link key={item.id} to={`/archive/${item.id}`} className="block rounded-[20px] border border-ink/10 bg-[#F8F6F1] p-3 text-sm text-charcoal/70 transition hover:border-[#B08D57]">
+                    {item.title}
+                  </Link>
+                ))
+              ) : (
+                <div className="rounded-[20px] border border-ink/10 bg-[#F8F6F1] p-3 text-sm text-charcoal/70">최근 등록 작품이 없습니다.</div>
+              )}
             </div>
           </div>
         </aside>

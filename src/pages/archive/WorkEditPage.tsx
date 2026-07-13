@@ -50,20 +50,21 @@ export function WorkEditPage() {
 
     try {
       await workService.updateWork(workId, {
-        title: values.title,
-        authorName: values.authorName,
-        year: values.year,
-        genre: values.genre,
-        logline: values.logline,
-        synopsis: values.synopsis,
-        tagNames: splitTags(values.tagNames),
-        visibility: values.visibility,
-        isPdfDownloadAllowed: values.isPdfDownloadAllowed,
-        isFeatured: values.isFeatured,
-        posterFile: values.posterFile?.[0] ?? null,
-        pdfFile: values.pdfFile?.[0] ?? null,
-        userId: user.id
-      });
+  title: values.title,
+  authorName: values.authorName,
+  year: values.year,
+  category: values.category,
+  genre: values.genre,
+  logline: values.logline,
+  synopsis: values.synopsis,
+  tagNames: splitTags(values.tagNames),
+  visibility: values.visibility,
+  isPdfDownloadAllowed: values.isPdfDownloadAllowed,
+  isFeatured: values.isFeatured,
+  posterFile: values.posterFile?.[0] ?? null,
+  pdfFile: values.pdfFile?.[0] ?? null,
+  userId: user.id
+});
 
       navigate(`/archive/${workId}`);
     } catch {

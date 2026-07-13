@@ -16,7 +16,7 @@ create type public.report_status as enum ('open', 'reviewing', 'resolved', 'dism
 create type public.notification_type as enum ('comment', 'reply', 'like', 'bookmark', 'announcement', 'system');
 
 create table public.profiles (
-  id uuid primary key references auth.profiles(id) on delete cascade,
+  id uuid primary key references auth.users(id) on delete cascade,
   email text not null unique,
   display_name text not null,
   avatar_path text,
@@ -49,7 +49,9 @@ create table public.works (
   author_id uuid references public.profiles(id) on delete set null,
   author_name text not null,
   year integer not null check (year >= 1900 and year <= 2100),
+  category text not null default '',
   genre text not null,
+  logline text not null default '',
   synopsis text not null,
   category_id uuid references public.categories(id) on delete set null,
   poster_path text,
@@ -85,6 +87,7 @@ create table public.community_posts (
   is_locked boolean not null default false,
   view_count integer not null default 0 check (view_count >= 0),
   like_count integer not null default 0 check (like_count >= 0),
+  comment_count integer not null default 0 check (comment_count >= 0),
   bookmark_count integer not null default 0 check (bookmark_count >= 0),
   report_count integer not null default 0 check (report_count >= 0),
   created_at timestamptz not null default now(),
@@ -191,6 +194,49 @@ create table public.notifications (
   created_at timestamptz not null default now()
 );
 
+create table public.notices (
+  id uuid primary key default gen_random_uuid(),
+  title text not null,
+  content text not null,
+  is_published boolean not null default false,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create table public.reports (
+  id uuid primary key default gen_random_uuid(),
+  reporter_id uuid references public.profiles(id) on delete set null,
+  target_type text not null check (target_type in ('work', 'community', 'comment')),
+  target_id uuid not null,
+  reason text not null,
+  description text,
+  status public.report_status not null default 'open',
+  handled_by uuid references public.profiles(id) on delete set null,
+  handled_at timestamptz,
+  created_at timestamptz not null default now()
+);
+
+create table public.site_settings (
+  id uuid primary key default gen_random_uuid(),
+  service_intro text not null default '',
+  main_banner_title text not null default '',
+  main_banner_description text not null default '',
+  copyright_policy text not null default '',
+  terms_of_service text not null default '',
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+insert into public.site_settings (
+  service_intro,
+  main_banner_title,
+  main_banner_description,
+  copyright_policy,
+  terms_of_service
+)
+values ('', '', '', '', '')
+on conflict do nothing;
+
 create index profiles_role_idx on public.profiles(role);
 create index works_visibility_created_at_idx on public.works(visibility, created_at desc);
 create index works_category_id_idx on public.works(category_id);
@@ -206,6 +252,8 @@ create index replies_community_comment_id_idx on public.replies(community_commen
 create index likes_user_id_idx on public.likes(user_id);
 create index bookmarks_user_id_idx on public.bookmarks(user_id);
 create index notifications_recipient_read_idx on public.notifications(recipient_id, read_at, created_at desc);
+create index notices_published_created_at_idx on public.notices(is_published, created_at desc);
+create index reports_status_created_at_idx on public.reports(status, created_at desc);
 
 create or replace function public.set_updated_at()
 returns trigger
@@ -245,6 +293,14 @@ create trigger set_replies_updated_at
 before update on public.replies
 for each row execute function public.set_updated_at();
 
+create trigger set_notices_updated_at
+before update on public.notices
+for each row execute function public.set_updated_at();
+
+create trigger set_site_settings_updated_at
+before update on public.site_settings
+for each row execute function public.set_updated_at();
+
 create or replace function public.is_admin()
 returns boolean
 language sql
@@ -276,6 +332,22 @@ as $$
   );
 $$;
 
+create or replace function public.can_manage_work_archive()
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select exists (
+    select 1
+    from public.profiles
+    where id = auth.uid()
+      and role in ('dramaticwriting', 'staff', 'admin')
+      and is_blocked = false
+  );
+$$;
+
 alter table public.profiles enable row level security;
 alter table public.categories enable row level security;
 alter table public.tags enable row level security;
@@ -288,6 +360,9 @@ alter table public.replies enable row level security;
 alter table public.likes enable row level security;
 alter table public.bookmarks enable row level security;
 alter table public.notifications enable row level security;
+alter table public.notices enable row level security;
+alter table public.reports enable row level security;
+alter table public.site_settings enable row level security;
 
 create policy " can read public profiles"
 on public.profiles for select
@@ -331,8 +406,8 @@ using (visibility = 'published' or public.is_admin());
 
 create policy "Admins can manage works"
 on public.works for all
-using (public.is_admin())
-with check (public.is_admin());
+using (public.can_manage_work_archive())
+with check (public.can_manage_work_archive());
 
 create policy "Everyone can read work tags"
 on public.work_tags for select
@@ -346,8 +421,8 @@ using (
 
 create policy "Admins can manage work tags"
 on public.work_tags for all
-using (public.is_admin())
-with check (public.is_admin());
+using (public.can_manage_work_archive())
+with check (public.can_manage_work_archive());
 
 create policy "Everyone can read visible community posts"
 on public.community_posts for select
@@ -456,5 +531,32 @@ with check (recipient_id = auth.uid());
 
 create policy "Admins can manage notifications"
 on public.notifications for all
+using (public.is_admin())
+with check (public.is_admin());
+
+create policy "Everyone can read published notices"
+on public.notices for select
+using (is_published = true or public.is_admin());
+
+create policy "Admins can manage notices"
+on public.notices for all
+using (public.is_admin())
+with check (public.is_admin());
+
+create policy "Active profiles can create reports"
+on public.reports for insert
+with check (reporter_id = auth.uid() and public.is_active_user());
+
+create policy "Admins can manage reports"
+on public.reports for all
+using (public.is_admin())
+with check (public.is_admin());
+
+create policy "Everyone can read site settings"
+on public.site_settings for select
+using (true);
+
+create policy "Admins can manage site settings"
+on public.site_settings for all
 using (public.is_admin())
 with check (public.is_admin());

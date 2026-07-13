@@ -3,7 +3,7 @@ import type {
   CategoryRecord,
   TagRecord,
   WorkRecord,
-  WorkSort
+  WorkSort,
 } from '../types/archive';
 
 export type WorkListFilters = {
@@ -29,6 +29,12 @@ export type WorkMutationInput = {
   userId: string;
 };
 
+type IdRow = {
+  id: string;
+};
+
+type WorkAssetBucket = 'work-images' | 'work-pdfs';
+
 const unavailableError = new Error(
   'Supabase is not configured. Add VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY to .env.local.',
 );
@@ -37,7 +43,7 @@ const sortMap: Record<WorkSort, { column: string; ascending: boolean }> = {
   latest: { column: 'created_at', ascending: false },
   oldest: { column: 'created_at', ascending: true },
   views: { column: 'view_count', ascending: false },
-  likes: { column: 'like_count', ascending: false }
+  likes: { column: 'like_count', ascending: false },
 };
 
 function slugify(value: string) {
@@ -54,17 +60,25 @@ function uniqueTagNames(tagNames: string[]) {
   );
 }
 
-async function uploadWorkAsset(bucket: 'work-images' | 'work-pdfs', workId: string, file: File) {
+function getAssetExtension(bucket: WorkAssetBucket, file: File) {
+  return file.name.split('.').pop() ?? (bucket === 'work-pdfs' ? 'pdf' : 'webp');
+}
+
+async function uploadWorkAsset(
+  bucket: WorkAssetBucket,
+  workId: string,
+  file: File,
+) {
   if (!supabase) {
     throw unavailableError;
   }
 
-  const extension = file.name.split('.').pop() ?? (bucket === 'work-pdfs' ? 'pdf' : 'webp');
+  const extension = getAssetExtension(bucket, file);
   const filePath = `${workId}/${bucket}-${Date.now()}.${extension}`;
 
   const { data, error } = await supabase.storage.from(bucket).upload(filePath, file, {
     cacheControl: '3600',
-    upsert: true
+    upsert: true,
   });
 
   if (error) {
@@ -81,7 +95,14 @@ async function syncWorkTags(workId: string, tagNames: string[]) {
 
   const names = uniqueTagNames(tagNames);
 
-  await supabase.from('work_tags').delete().eq('work_id', workId);
+  const { error: deleteError } = await supabase
+    .from('work_tags')
+    .delete()
+    .eq('work_id', workId);
+
+  if (deleteError) {
+    throw deleteError;
+  }
 
   if (names.length === 0) {
     return;
@@ -89,7 +110,7 @@ async function syncWorkTags(workId: string, tagNames: string[]) {
 
   const tagRows = names.map((name) => ({
     name,
-    slug: slugify(name)
+    slug: slugify(name),
   }));
 
   const { data: tags, error: tagError } = await supabase
@@ -102,16 +123,80 @@ async function syncWorkTags(workId: string, tagNames: string[]) {
     throw tagError;
   }
 
+  if (!tags || tags.length === 0) {
+    return;
+  }
+
   const { error: joinError } = await supabase.from('work_tags').insert(
     tags.map((tag) => ({
       work_id: workId,
-      tag_id: tag.id
+      tag_id: tag.id,
     })),
   );
 
   if (joinError) {
     throw joinError;
   }
+}
+
+async function findUserWorkReaction(
+  table: 'bookmarks' | 'likes',
+  workId: string,
+  userId: string,
+) {
+  if (!supabase) {
+    return null;
+  }
+
+  const { data, error } = await supabase
+    .from(table)
+    .select('id')
+    .eq('work_id', workId)
+    .eq('user_id', userId)
+    .limit(1)
+    .returns<IdRow[]>();
+
+  if (error) {
+    throw error;
+  }
+
+  return data[0] ?? null;
+}
+
+async function toggleUserWorkReaction(
+  table: 'bookmarks' | 'likes',
+  workId: string,
+  userId: string,
+) {
+  if (!supabase) {
+    throw unavailableError;
+  }
+
+  const existingReaction = await findUserWorkReaction(table, workId, userId);
+
+  if (existingReaction) {
+    const { error } = await supabase
+      .from(table)
+      .delete()
+      .eq('id', existingReaction.id);
+
+    if (error) {
+      throw error;
+    }
+
+    return false;
+  }
+
+  const { error } = await supabase.from(table).insert({
+    work_id: workId,
+    user_id: userId,
+  });
+
+  if (error) {
+    throw error;
+  }
+
+  return true;
 }
 
 export const workService = {
@@ -150,11 +235,13 @@ export const workService = {
 
     const search = filters.search.toLowerCase();
     return data.filter((work) => {
-      const tagNames = work.work_tags?.map((workTag) => workTag.tags?.name.toLowerCase() ?? '') ?? [];
+      const tagNames =
+        work.work_tags?.map((workTag) => workTag.tags?.name.toLowerCase() ?? '') ?? [];
+
       return (
-        work.title.toLowerCase().includes(search)
-        || work.author_name.toLowerCase().includes(search)
-        || tagNames.some((tagName) => tagName.includes(search))
+        work.title.toLowerCase().includes(search) ||
+        work.author_name.toLowerCase().includes(search) ||
+        tagNames.some((tagName) => tagName.includes(search))
       );
     });
   },
@@ -201,14 +288,16 @@ export const workService = {
       throw unavailableError;
     }
 
+    const publishedAt = input.visibility === 'published' ? new Date().toISOString() : null;
+
     const { data: createdWork, error } = await supabase
       .from('works')
       .insert({
         title: input.title,
         author_name: input.authorName,
         year: input.year,
-        genre: input.genre,
         category: input.category,
+        genre: input.genre,
         logline: input.logline,
         synopsis: input.synopsis,
         visibility: input.visibility,
@@ -216,13 +305,11 @@ export const workService = {
         is_featured: input.isFeatured,
         created_by: input.userId,
         updated_by: input.userId,
-        published_at: input.visibility === 'published' ? new Date().toISOString() : null
+        published_at: publishedAt,
       })
       .select('id')
-      .returns<Array<{ id: string }>>()
+      .returns<IdRow[]>()
       .single();
-console.log(error);
-alert(error?.message ?? 'insert 성공');
 
     if (error) {
       throw error;
@@ -239,8 +326,8 @@ alert(error?.message ?? 'insert 성공');
       const { error: assetError } = await supabase
         .from('works')
         .update({
-          poster_path: posterPath,
-          script_pdf_path: pdfPath
+          ...(posterPath ? { poster_path: posterPath } : {}),
+          ...(pdfPath ? { script_pdf_path: pdfPath } : {}),
         })
         .eq('id', createdWork.id);
 
@@ -250,6 +337,7 @@ alert(error?.message ?? 'insert 성공');
     }
 
     await syncWorkTags(createdWork.id, input.tagNames);
+
     return createdWork.id;
   },
 
@@ -273,6 +361,7 @@ alert(error?.message ?? 'insert 성공');
         year: input.year,
         category: input.category,
         genre: input.genre,
+        logline: input.logline,
         synopsis: input.synopsis,
         visibility: input.visibility,
         is_pdf_download_allowed: input.isPdfDownloadAllowed,
@@ -280,7 +369,7 @@ alert(error?.message ?? 'insert 성공');
         updated_by: input.userId,
         published_at: input.visibility === 'published' ? new Date().toISOString() : null,
         ...(posterPath ? { poster_path: posterPath } : {}),
-        ...(pdfPath ? { script_pdf_path: pdfPath } : {})
+        ...(pdfPath ? { script_pdf_path: pdfPath } : {}),
       })
       .eq('id', workId);
 
@@ -305,72 +394,28 @@ alert(error?.message ?? 'insert 성공');
 
   incrementViewCount(workId: string) {
     if (!supabase) {
-      return Promise.resolve({ data: null, error: unavailableError } as any);
+      return Promise.resolve({ data: null, error: unavailableError });
     }
 
     return supabase.rpc('increment_work_view_count', { work_id: workId });
   },
 
+  async isLiked(workId: string, userId: string) {
+    const reaction = await findUserWorkReaction('likes', workId, userId);
+    return Boolean(reaction);
+  },
+
+  async toggleLike(workId: string, userId: string) {
+    return toggleUserWorkReaction('likes', workId, userId);
+  },
+
   async isBookmarked(workId: string, userId: string) {
-    if (!supabase) {
-      return false;
-    }
-
-    const { data, error } = await supabase
-      .from('bookmarks')
-      .select('id')
-      .eq('work_id', workId)
-      .eq('user_id', userId)
-      .limit(1)
-      .returns<Array<{ id: string }>>();
-
-    if (error) {
-      throw error;
-    }
-
-    return data.length > 0;
+    const reaction = await findUserWorkReaction('bookmarks', workId, userId);
+    return Boolean(reaction);
   },
 
   async toggleBookmark(workId: string, userId: string) {
-    if (!supabase) {
-      throw unavailableError;
-    }
-
-    const { data, error } = await supabase
-      .from('bookmarks')
-      .select('id')
-      .eq('work_id', workId)
-      .eq('user_id', userId)
-      .limit(1)
-      .returns<Array<{ id: string }>>();
-
-    if (error) {
-      throw error;
-    }
-
-    if (data.length > 0) {
-      const { error: deleteError } = await supabase
-        .from('bookmarks')
-        .delete()
-        .eq('id', data[0].id);
-
-      if (deleteError) {
-        throw deleteError;
-      }
-
-      return false;
-    }
-
-    const { error: insertError } = await supabase.from('bookmarks').insert({
-      work_id: workId,
-      user_id: userId
-    });
-
-    if (insertError) {
-      throw insertError;
-    }
-
-    return true;
+    return toggleUserWorkReaction('bookmarks', workId, userId);
   },
 
   getPosterUrl(path: string | null) {
@@ -396,5 +441,5 @@ alert(error?.message ?? 'insert 성공');
     }
 
     return data.signedUrl;
-  }
+  },
 };

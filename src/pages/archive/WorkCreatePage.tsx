@@ -22,7 +22,7 @@ export function WorkCreatePage() {
     }
 
     if (
-      profile?.role !== 'faculty' &&
+      profile?.role !== 'professor' &&
       profile?.role !== 'admin'
     ) {
       throw new Error('작품 등록 권한이 없습니다.');

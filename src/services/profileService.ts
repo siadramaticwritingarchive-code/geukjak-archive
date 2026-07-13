@@ -1,5 +1,5 @@
 import { supabase } from '../lib/supabase';
-import type { UserProfile } from '../types/user';
+import type { UserProfile, UserRole } from '../types/user';
 
 const unavailableError = new Error(
   'Supabase is not configured. Add VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY to .env.local.',
@@ -94,41 +94,59 @@ export const profileService = {
       return null;
     }
 
-    const { data } = supabase.storage.from('profile-images').getPublicUrl(path);
+    const { data } = supabase.storage
+      .from('profile-images')
+      .getPublicUrl(path);
+
     return data.publicUrl;
   },
+
   async listProfiles() {
-  if (!supabase) {
-    throw unavailableError;
+    if (!supabase) {
+      throw unavailableError;
+    }
+
+    const { data, error } = await supabase
+      .from('profiles')
+      .select('*')
+      .order('created_at', { ascending: false });
+
+    if (error) {
+      throw error;
+    }
+
+    return data as UserProfile[];
+  },
+
+  async updateRole(userId: string, role: UserRole) {
+    if (!supabase) {
+      throw unavailableError;
+    }
+
+    const { error } = await supabase
+      .from('profiles')
+      .update({ role })
+      .eq('id', userId);
+
+    if (error) {
+      throw error;
+    }
+  },
+
+  async blockUser(userId: string, blocked: boolean) {
+    if (!supabase) {
+      throw unavailableError;
+    }
+
+    const { error } = await supabase
+      .from('profiles')
+      .update({
+        is_blocked: blocked
+      })
+      .eq('id', userId);
+
+    if (error) {
+      throw error;
+    }
   }
-
-  const { data, error } = await supabase
-    .from('profiles')
-    .select('*')
-    .order('created_at', { ascending: false });
-
-  if (error) {
-    throw error;
-  }
-
-  return data as UserProfile[];
-},
-
-async updateRole(userId: string, role: UserProfile['role']) {
-  if (!supabase) {
-    throw unavailableError;
-  }
-
-  const { error } = await supabase
-    .from('profiles')
-    .update({
-      role
-    })
-    .eq('id', userId);
-
-  if (error) {
-    throw error;
-  }
-}
-
 };
