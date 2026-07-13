@@ -128,7 +128,7 @@ export function CommunityPage() {
     <div className="space-y-8">
       <PageHeader
         eyebrow="커뮤니티"
-        title="극작과 커뮤니티"
+        title="커뮤니티"
         description="공지사항, 공연 홍보, 질문, 구인·구직, 자유게시판, 창작 고민까지 한 곳에서 확인할 수 있습니다."
       />
 
@@ -232,7 +232,7 @@ export function CommunityPage() {
             <div className="rounded-[24px] border border-ink/10 bg-[#F8F6F1] p-5">
               <p className="text-sm font-semibold uppercase tracking-[0.28em] text-[#B08D57]">공연 홍보</p>
               <div className="mt-4 rounded-[20px] border border-ink/10 bg-white p-4 text-sm leading-7 text-charcoal/70">
-                학생회 공연 홍보 요청과 발표회 소식을 확인해 보세요.
+                
               </div>
             </div>
           </div>

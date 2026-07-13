@@ -74,8 +74,8 @@ export function LoginPage() {
     <div className="mx-auto max-w-5xl">
       <PageHeader
         eyebrow="로그인"
-        title="아카이브에 다시 들어오세요"
-        description="학생과 교수진이 작품과 커뮤니티를 이어갈 수 있도록 안전하게 로그인합니다."
+        title="아카이브에 들어오세요"
+        description="작품과 커뮤니티를 이어갈 수 있도록 안전하게 로그인합니다."
       />
       <div className="grid gap-6 lg:grid-cols-[1.15fr_0.85fr]">
         <section className="rounded-lg border border-ink/10 bg-white/60 p-6 shadow-sm shadow-ink/5">
