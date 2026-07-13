@@ -1,16 +1,17 @@
 @import 'tailwindcss';
+@import "pretendard/dist/web/static/pretendard.css";
 
 @theme {
   --color-ink: #16233B;
   --color-charcoal: #1E1E1E;
   --color-ivory: #F8F6F1;
   --color-gold: #B08D57;
-  --font-serif: 'Iowan Old Style', 'Palatino Linotype', 'Book Antiqua', serif;
+  --font-serif: 'Pretendard Variable', 'Pretendard', 'Apple SD Gothic Neo', 'Noto Sans KR', sans-serif;
   --font-sans: 'Pretendard', 'Apple SD Gothic Neo', 'Noto Sans KR', ui-sans-serif, system-ui, sans-serif;
 }
 
 :root {
-  font-family: 'Pretendard', 'Apple SD Gothic Neo', 'Noto Sans KR', ui-sans-serif, system-ui, sans-serif;
+  font-family: 'Pretendard Variable', 'Pretendard', 'Apple SD Gothic Neo', 'Noto Sans KR', ui-sans-serif, system-ui, sans-serif;
   color: #1E1E1E;
   background: #F8F6F1;
   font-synthesis: none;
@@ -24,9 +25,7 @@
 }
 
 body {
-  margin: 0;
-  min-width: 320px;
-  background: linear-gradient(180deg, #F8F6F1 0%, #f5efe6 100%);
+  font-family: "Pretendard Variable", "Pretendard", sans-serif;
 }
 
 a {
